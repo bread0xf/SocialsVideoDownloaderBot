@@ -28,10 +28,17 @@ Python, `python-telegram-bot`, FastAPI, yt-dlp behind a replaceable extraction i
 ├── apps/
 │   └── bot/                # Telegram adapter
 ├── backend/
-│   ├── api/                # FastAPI and health endpoints
-│   ├── core/               # Settings, logging, quota helpers
-│   ├── database/           # Engine, sessions, Redis
-│   └── workers/            # ARQ worker
+│   ├── api/                # FastAPI and health/platform endpoints
+│   ├── core/               # Settings, logging, quota and error types
+│   ├── database/           # Engine, sessions, ORM models
+│   ├── delivery/           # Telegram delivery abstraction
+│   ├── downloads/          # Submission, state machine, outbox, cache keys
+│   ├── entitlements/       # Free/Premium entitlement resolution
+│   ├── media/              # Format selection, FFprobe, FFmpeg, cache metadata
+│   ├── platforms/          # URL validation, registry, yt-dlp adapter
+│   ├── storage/            # Workspaces and cached media files
+│   ├── usage/              # Quota reservation, commit, release, ledger
+│   └── workers/            # ARQ worker and tasks
 ├── migrations/             # Alembic
 ├── tests/                  # Unit/integration tests
 └── docs/                   # Older split spec (kept for reference)
@@ -39,9 +46,11 @@ Python, `python-telegram-bot`, FastAPI, yt-dlp behind a replaceable extraction i
 
 ## Current status
 
-Phase 0 skeleton: configuration, structured logging, PostgreSQL/Redis wiring, health endpoints, ARQ worker, Alembic wiring, Docker Compose, and initial tests. The free downloader vertical slice is next.
+Phase 0 skeleton and the Phase 1 free-tier download slice are implemented: URL validation and platform registry, user/job persistence, entitlement resolution, atomic quota reservation with ledger entries, transactional outbox to ARQ, yt-dlp/FFmpeg processing, Telegram delivery, cache lookup, and expiry/size cleanup tasks.
 
-`backend_specs/` is the implementation baseline; where `docs/` conflicts with it, `backend_specs/` wins. See `docs/implementation-status.md`.
+Remaining hardening work is tracked in `docs/implementation-status.md`: real extractor/media fixture tests, live Telegram delivery tests, cache-cleanup and stale-job tests, and extractor redirect/SSRF validation. Premium purchase, rewarded ads, and sponsor features remain blocked on owner decisions.
+
+`backend_specs/` is the implementation baseline; where `docs/` conflicts with it, `backend_specs/` wins.
 
 ## Getting started
 
@@ -64,8 +73,11 @@ Run quality gates:
 ```bash
 uv run ruff check .
 uv run ruff format --check .
+uv run mypy backend apps
 uv run pytest
 ```
+
+Integration tests use PostgreSQL. Set `TEST_DATABASE_URL` to an isolated database, or let the suite create a temporary database on the configured local server.
 
 1. Read `AGENTS.md` and `backend_specs/`.
 2. Resolve release-blocking decisions before production launch.

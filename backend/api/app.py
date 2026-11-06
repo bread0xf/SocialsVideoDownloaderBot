@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from backend.api.routes.health import router as health_router
+from backend.api.routes.platforms import router as platforms_router
 from backend.core.config import Settings, get_settings
 from backend.core.logging import configure_logging
 from backend.database.redis import build_redis
@@ -36,6 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = resolved
     app.include_router(health_router)
+    app.include_router(platforms_router)
     return app
 
 
