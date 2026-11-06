@@ -8,15 +8,15 @@ A Telegram bot for downloading publicly accessible videos from supported social 
 - **Access policy:** Public content only; no login, private-content access, DRM circumvention, or access-control bypass
 - **Delivery:** Telegram
 - **Commercial model:** Freemium + monthly Premium
-- **Free allowance:** 5 successful downloads per user per day
-- **Rewarded allowance:** 1 additional download per successfully verified rewarded-ad event
-- **Free quality:** Proposed initial ceiling of 480p; **release decision still required**
+- **Free allowance:** 5 successful downloads per `Africa/Lagos` calendar day
+- **Rewarded allowance:** 1 additional download per successfully verified rewarded-ad event (provider pending)
+- **Free quality:** 480p ceiling (locked)
 - **Premium quality:** Best supported source quality, up to 4K where source, processing, Telegram and deployment limits allow
 - **Architecture:** Python modular monolith, deployed as separate bot/API/worker/scheduler processes from one codebase
 
-## Proposed stack
+## Locked stack
 
-Python, `python-telegram-bot`, FastAPI, yt-dlp behind a replaceable extraction interface, FFmpeg, PostgreSQL, Redis, ARQ, Pydantic, Alembic, pytest, Ruff and Docker Compose.
+Python, `python-telegram-bot`, FastAPI, yt-dlp behind a replaceable extraction interface, FFmpeg/FFprobe, PostgreSQL, Redis, ARQ, SQLAlchemy 2.x async, Pydantic Settings, Alembic, pytest, Ruff and Docker Compose, managed with `uv`.
 
 ## Repository map
 
@@ -24,23 +24,52 @@ Python, `python-telegram-bot`, FastAPI, yt-dlp behind a replaceable extraction i
 .
 ├── AGENTS.md
 ├── README.md
-└── docs/
-    ├── product/
-    ├── architecture/
-    ├── engineering/
-    ├── operations/
-    └── project/
+├── backend_specs/          # Approved implementation baseline
+├── apps/
+│   └── bot/                # Telegram adapter
+├── backend/
+│   ├── api/                # FastAPI and health endpoints
+│   ├── core/               # Settings, logging, quota helpers
+│   ├── database/           # Engine, sessions, Redis
+│   └── workers/            # ARQ worker
+├── migrations/             # Alembic
+├── tests/                  # Unit/integration tests
+└── docs/                   # Older split spec (kept for reference)
 ```
+
+## Current status
+
+Phase 0 skeleton: configuration, structured logging, PostgreSQL/Redis wiring, health endpoints, ARQ worker, Alembic wiring, Docker Compose, and initial tests. The free downloader vertical slice is next.
+
+`backend_specs/` is the implementation baseline; where `docs/` conflicts with it, `backend_specs/` wins. See `docs/implementation-status.md`.
 
 ## Getting started
 
-This archive is the specification and agent hand-off pack, not an implemented application. No runtime code, credentials, deployment secrets, or production configuration are included.
+Requirements: Python 3.13, `uv`, Docker + Docker Compose, FFmpeg/FFprobe.
 
-1. Read `AGENTS.md`.
-2. Read `docs/product/product-requirements.md` and `docs/project/unresolved-decisions.md`.
-3. Review architecture and security documents.
-4. Resolve release-blocking decisions before production launch.
-5. Implement incrementally with tests and migrations.
+```bash
+cp .env.example .env
+# Set TELEGRAM_BOT_TOKEN in .env
+
+docker compose up -d postgres redis
+uv sync --all-groups
+uv run alembic upgrade head
+uv run svdb-api       # http://localhost:8000/health/live
+uv run svdb-bot       # Telegram polling
+uv run svdb-worker    # ARQ worker
+```
+
+Run quality gates:
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
+```
+
+1. Read `AGENTS.md` and `backend_specs/`.
+2. Resolve release-blocking decisions before production launch.
+3. Implement in small vertical slices with tests and migrations.
 
 ## Important boundary
 
@@ -48,4 +77,4 @@ The bot must only process content that is publicly accessible through supported 
 
 ## Document status
 
-These documents define the proposed MVP and implementation constraints. Items marked **OPEN**, **PROPOSED**, or **VERIFY** require confirmation. Do not silently convert them into settled product requirements.
+`backend_specs/` defines the locked MVP baseline. Values marked **OPEN** or **VERIFY** in `backend_specs/docs/09-open-decisions.md` still require owner confirmation. Do not silently convert them into settled product requirements.

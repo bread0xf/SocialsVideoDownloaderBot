@@ -111,7 +111,7 @@ Cache key inputs:
 - Processing pipeline version.
 
 Cache policy:
-- Configurable TTL.
+- Hard maximum retention of 24 hours from creation (locked).
 - Maximum total bytes and per-artifact size.
 - LRU or equivalent bounded eviction.
 - Integrity/metadata checks before reuse.

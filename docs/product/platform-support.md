@@ -40,7 +40,7 @@ The exact signatures may evolve, but application/domain code must not depend dir
 
 ## Format selection
 
-- Free: select the best available format at or below the approved Free ceiling (480p is a proposed initial value, not yet approved).
+- Free: select the best available format at or below the locked Free ceiling (480p).
 - Premium: select the best practical available quality up to 4K, subject to source, codec, file size, processing and Telegram delivery constraints.
 - If the requested entitlement cannot be satisfied, choose a documented fallback or fail clearly; do not silently exceed plan limits.
 - No manual quality selector in MVP.

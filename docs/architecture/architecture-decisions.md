@@ -72,6 +72,6 @@ Use Docker Compose for reproducible development and initial deployment. Revisit 
 
 ## ADR-012 — Quality profile
 
-**Status:** Partly open
+**Status:** Accepted
 
-Free output must remain below 720p; 480p is a proposed initial cap. Premium may access higher available qualities up to 4K, subject to practical delivery constraints. Confirm exact behavior before release.
+Free output is capped at 480p. Premium may access higher available qualities up to 4K, subject to practical delivery constraints. Quality selection is automatic; users do not select formats in the MVP.

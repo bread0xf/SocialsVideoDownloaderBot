@@ -8,6 +8,7 @@ Build the project described in the product, architecture, security and engineeri
 
 Before changing code, read:
 
+0. `backend_specs/` — the approved implementation baseline. Where it conflicts with `docs/`, `backend_specs/` wins. Do not guess items listed in `backend_specs/docs/09-open-decisions.md`.
 1. `README.md`
 2. `docs/product/product-requirements.md`
 3. `docs/product/platform-support.md`
@@ -59,7 +60,7 @@ Before changing code, read:
 
 ## Decision handling
 
-If a decision is marked OPEN/PROPOSED/VERIFY, do not invent a final value. Use configuration or a clearly named temporary default only when necessary for local development, and document it. Ask the project owner to approve production values.
+If a decision is marked OPEN/PROPOSED/VERIFY in `backend_specs/docs/09-open-decisions.md` or `docs/`, do not invent a final value. Use configuration or a clearly named temporary default only when necessary for local development, and document it. Ask the project owner to approve production values. Decisions already locked by `backend_specs/` (for example `Africa/Lagos` quota periods, 480p free ceiling and 24-hour media retention) must not be reopened without explicit owner instruction.
 
 ## Agent output format
 

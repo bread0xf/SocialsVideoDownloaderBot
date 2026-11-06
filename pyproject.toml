@@ -1,7 +1,7 @@
 [project]
 name = "socialsvideodownloaderbot"
 version = "0.1.0"
-description = "Add your description here"
+description = "Telegram bot for downloading public social-media videos"
 readme = "README.md"
 authors = [
     { name = "Bread", email = "blood.on.bread@gmail.com" }
@@ -13,22 +13,25 @@ dependencies = [
     "asyncpg>=0.32.0",
     "fastapi>=0.162.0",
     "httpx>=0.28.1",
+    "pydantic>=2.14.2",
     "pydantic-settings>=2.16.2",
     "python-dotenv>=1.2.4",
     "python-telegram-bot>=22.8",
     "redis>=5.3.1",
-    "sqlalchemy>=2.1.8",
+    "sqlalchemy[asyncio]>=2.1.8",
     "structlog>=26.1.0",
     "uvicorn[standard]>=0.54.0",
     "yt-dlp>=2026.10.26",
 ]
 
 [project.scripts]
-socialsvideodownloaderbot = "socialsvideodownloaderbot:main"
+svdb-bot = "apps.bot.main:main"
+svdb-api = "backend.api.main:main"
+svdb-worker = "backend.workers.main:main"
 
 [build-system]
-requires = ["uv_build>=0.12.15,<0.13.0"]
-build-backend = "uv_build"
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
@@ -40,3 +43,38 @@ dev = [
     "ruff>=0.17.3",
     "testcontainers>=4.15.0",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend", "apps"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["backend", "apps", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend", "apps"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:multipart.*",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["backend", "apps"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true

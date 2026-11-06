@@ -1,14 +1,16 @@
 # Freemium, Billing and Entitlements
 
-**Status:** Core policy direction agreed; numeric and provider details remain partly open.
+**Status:** Core policy direction agreed. Free allowance, free quality ceiling, quota timezone and media retention are locked by `backend_specs/`. Premium pricing/allowance and reward-provider details remain open.
+
+> `backend_specs/` is the implementation baseline. Where this document conflicts with it, the specification pack wins.
 
 ## 1. Plans
 
 | Capability | Free | Premium |
 |---|---|---|
-| Daily allowance | 5 successful downloads | Higher configured quota — OPEN |
+| Daily allowance | 5 successful downloads per `Africa/Lagos` calendar day | Higher configured quota — OPEN |
 | Rewarded extra download | Proposed: +1 per verified ad | OPEN |
-| Output quality | Below 720p; 480p proposed ceiling | Best supported, up to 4K |
+| Output quality | Up to 480p (locked ceiling) | Best supported, up to 4K |
 | Processing priority | Standard | Proposed priority queue |
 | Bot-owned sponsor placements | May be shown | Excluded |
 | Billing | No subscription | Monthly subscription |
@@ -18,7 +20,7 @@ Telegram's own advertising product is separate from sponsor placements controlle
 ## 2. Quota semantics
 
 - Count successful Telegram deliveries, not accepted URLs, queued jobs or extraction attempts.
-- Use a clearly defined daily reset policy and timezone. **OPEN:** choose UTC or a documented product timezone.
+- The daily quota period resets at local midnight in `Africa/Lagos` (locked). Persist timestamps in UTC and convert only for period calculation/presentation; compute the boundary independently and handle DST safely even though Lagos currently has no DST.
 - Enforce quota atomically in PostgreSQL.
 - Create a reservation when authorizing a job; commit it only after confirmed delivery.
 - Release or reconcile reservations after terminal failure/cancellation.
@@ -45,6 +47,7 @@ Never grant a credit from a client-side “ad watched” message alone. If provi
 
 - Monthly subscription.
 - Telegram Stars is the initial proposed payment rail.
+- Access remains valid through the recorded `paid_through` instant; entitlement expires after it.
 - Price in Stars: OPEN.
 - Premium quota: OPEN.
 - Grace period, cancellation, refund and renewal behavior: define before launch.
@@ -72,6 +75,8 @@ PlanEntitlement
 Use plan configuration and subscription state to derive effective entitlement. Preserve historical billing/ledger records when a plan changes.
 
 ## 6. Cache interaction
+
+Processed media cache has a hard maximum retention of 24 hours (locked).
 
 A cache hit does not bypass authorization:
 1. Identify cache artifact.
