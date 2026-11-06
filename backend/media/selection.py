@@ -4,8 +4,9 @@ from backend.core.errors import AppError, ErrorCode
 from backend.platforms.adapters.base import FormatSelection, MediaFormat
 
 _SAFE_FORMAT_ID = re.compile(r"^[A-Za-z0-9_.:=@-]+$")
-_H264_CODECS = frozenset({"h264", "avc1", "avc1.4d401f", "avc1.64001f"})
-_AAC_CODECS = frozenset({"aac", "mp4a", "mp4a.40.2"})
+_H264_PREFIXES = ("avc", "h264")
+_AAC_PREFIXES = ("mp4a", "aac")
+_HTTP_PROTOCOLS = frozenset({None, "http", "https", "m3u8", "m3u8_native"})
 
 
 def _safe_format_id(value: str | None) -> str | None:
@@ -14,49 +15,65 @@ def _safe_format_id(value: str | None) -> str | None:
     return value
 
 
-def _known_size(fmt: MediaFormat) -> int | None:
-    if fmt.filesize is not None and fmt.filesize >= 0:
+def _estimated_size(fmt: MediaFormat, duration_seconds: float | None) -> int | None:
+    if fmt.filesize is not None and fmt.filesize > 0:
         return fmt.filesize
+    if fmt.tbr is not None and fmt.tbr > 0 and duration_seconds and duration_seconds > 0:
+        return int(fmt.tbr * 1000 / 8 * duration_seconds)
     return None
 
 
+def _quality_height(fmt: MediaFormat) -> int | None:
+    if fmt.width is None or fmt.height is None or fmt.width <= 0 or fmt.height <= 0:
+        return None
+    return min(fmt.width, fmt.height)
+
+
 def _codec_score(fmt: MediaFormat) -> int:
+    video = (fmt.vcodec or "").lower()
+    audio = (fmt.acodec or "").lower()
     score = 0
     if fmt.ext == "mp4":
         score += 1
-    if fmt.vcodec in _H264_CODECS:
+    if video.startswith(_H264_PREFIXES):
         score += 4
-    if fmt.acodec in _AAC_CODECS:
+    if audio.startswith(_AAC_PREFIXES):
         score += 2
-    if fmt.protocol in {None, "https", "http"}:
+    if fmt.protocol in _HTTP_PROTOCOLS:
         score += 1
     return score
 
 
 def _eligible_video(fmt: MediaFormat, max_height: int) -> bool:
-    if not fmt.has_video or fmt.height is None:
+    quality_height = _quality_height(fmt)
+    if fmt.has_drm or not fmt.has_video or quality_height is None:
         return False
-    if fmt.height <= 0 or fmt.height > max_height:
-        return False
-    if not fmt.width or fmt.width <= 0:
+    if quality_height > max_height:
         return False
     return _safe_format_id(fmt.format_id) is not None
 
 
-def _video_sort_key(fmt: MediaFormat) -> tuple[int, int, int, float]:
-    return (fmt.height or 0, _codec_score(fmt), _known_size(fmt) or 0, fmt.tbr or 0.0)
-
-
-def _audio_sort_key(fmt: MediaFormat) -> tuple[int, float, int]:
+def _video_sort_key(
+    fmt: MediaFormat, duration_seconds: float | None
+) -> tuple[int, int, float, int]:
     return (
-        1 if fmt.acodec in _AAC_CODECS else 0,
+        _quality_height(fmt) or 0,
+        _codec_score(fmt),
         fmt.tbr or 0.0,
-        _known_size(fmt) or 0,
+        _estimated_size(fmt, duration_seconds) or 0,
     )
 
 
-def _fits(size: int | None, *limits: int) -> bool:
-    return size is None or size <= min(limits)
+def _audio_sort_key(fmt: MediaFormat, duration_seconds: float | None) -> tuple[int, float, int]:
+    return (
+        1 if (fmt.acodec or "").lower().startswith(_AAC_PREFIXES) else 0,
+        fmt.tbr or 0.0,
+        _estimated_size(fmt, duration_seconds) or 0,
+    )
+
+
+def _fits(size: int | None, max_bytes: int) -> bool:
+    return size is None or size <= max_bytes
 
 
 def select_format(
@@ -64,44 +81,87 @@ def select_format(
     *,
     max_height: int,
     max_bytes: int,
+    duration_seconds: float | None = None,
 ) -> FormatSelection:
+    video_formats = [fmt for fmt in formats if fmt.has_video]
+    if video_formats and all(fmt.has_drm for fmt in video_formats):
+        raise AppError(
+            ErrorCode.PRIVATE_OR_RESTRICTED_CONTENT,
+            "DRM-protected videos are not supported.",
+        )
+
     videos = sorted(
         (fmt for fmt in formats if _eligible_video(fmt, max_height)),
-        key=_video_sort_key,
+        key=lambda fmt: _video_sort_key(fmt, duration_seconds),
         reverse=True,
     )
     if not videos:
-        raise AppError(
-            ErrorCode.UNSUPPORTED_CONTENT,
-            "No downloadable video quality was found for this link.",
+        above_ceiling = sorted(
+            (
+                fmt
+                for fmt in formats
+                if fmt.has_video
+                and not fmt.has_drm
+                and _quality_height(fmt) is not None
+                and _safe_format_id(fmt.format_id) is not None
+            ),
+            key=lambda fmt: (
+                _quality_height(fmt) or 0,
+                fmt.tbr or 0.0,
+                _estimated_size(fmt, duration_seconds) or 0,
+            ),
         )
+        for fmt in above_ceiling:
+            if _fits(_estimated_size(fmt, duration_seconds), max_bytes):
+                videos = [fmt]
+                break
+        if not videos:
+            if above_ceiling:
+                raise AppError(
+                    ErrorCode.FILE_TOO_LARGE,
+                    "This video is too large to deliver on Telegram.",
+                )
+            raise AppError(
+                ErrorCode.UNSUPPORTED_CONTENT,
+                "No downloadable video quality was found for this link.",
+            )
 
     combined_candidates = [fmt for fmt in videos if fmt.has_audio]
     audio_candidates = sorted(
-        (fmt for fmt in formats if fmt.has_audio and not fmt.has_video),
-        key=_audio_sort_key,
+        (fmt for fmt in formats if fmt.has_audio and not fmt.has_video and not fmt.has_drm),
+        key=lambda fmt: _audio_sort_key(fmt, duration_seconds),
         reverse=True,
     )
 
     combined_choice: MediaFormat | None = None
     for fmt in combined_candidates:
-        if _fits(_known_size(fmt), max_bytes):
+        if _fits(_estimated_size(fmt, duration_seconds), max_bytes):
             combined_choice = fmt
             break
 
     video_candidates = [fmt for fmt in videos if not fmt.has_audio]
     separate_choice: tuple[MediaFormat, MediaFormat] | None = None
-    best_audio = audio_candidates[0] if audio_candidates else None
-    if video_candidates and best_audio is not None:
-        audio_size = _known_size(best_audio) or 0
+    if audio_candidates:
         for video in video_candidates:
-            video_size = _known_size(video)
-            if video_size is None or video_size + audio_size <= max_bytes:
-                separate_choice = (video, best_audio)
+            video_size = _estimated_size(video, duration_seconds)
+            for audio in audio_candidates:
+                audio_size = _estimated_size(audio, duration_seconds)
+                if video_size is None or audio_size is None:
+                    total_size = None
+                else:
+                    total_size = video_size + audio_size
+                if _fits(total_size, max_bytes):
+                    separate_choice = (video, audio)
+                    break
+            if separate_choice is not None:
                 break
 
-    if combined_choice is None and separate_choice is None:
-        if combined_candidates or (video_candidates and best_audio is not None):
+    silent_choice: MediaFormat | None = None
+    if not combined_candidates and not audio_candidates and video_candidates:
+        silent_choice = video_candidates[0]
+
+    if combined_choice is None and separate_choice is None and silent_choice is None:
+        if combined_candidates or (video_candidates and audio_candidates):
             raise AppError(
                 ErrorCode.FILE_TOO_LARGE,
                 "This video is too large to deliver on Telegram.",
@@ -112,7 +172,8 @@ def select_format(
         )
 
     if combined_choice is not None and (
-        separate_choice is None or (combined_choice.height or 0) >= (separate_choice[0].height or 0)
+        separate_choice is None
+        or (_quality_height(combined_choice) or 0) >= (_quality_height(separate_choice[0]) or 0)
     ):
         video_id = _safe_format_id(combined_choice.format_id)
         assert video_id is not None
@@ -120,12 +181,26 @@ def select_format(
             format_spec=video_id,
             video_format_id=video_id,
             audio_format_id=None,
-            expected_height=combined_choice.height,
-            estimated_bytes=_known_size(combined_choice),
+            expected_height=min(_quality_height(combined_choice) or max_height, max_height),
+            estimated_bytes=_estimated_size(combined_choice, duration_seconds),
             combined=True,
+            fallback_format_spec=f"best[height<={max_height}]/best[width<={max_height}]",
         )
 
-    assert separate_choice is not None
+    if separate_choice is None:
+        assert silent_choice is not None
+        video_id = _safe_format_id(silent_choice.format_id)
+        assert video_id is not None
+        return FormatSelection(
+            format_spec=video_id,
+            video_format_id=video_id,
+            audio_format_id=None,
+            expected_height=min(_quality_height(silent_choice) or max_height, max_height),
+            estimated_bytes=_estimated_size(silent_choice, duration_seconds),
+            combined=False,
+            fallback_format_spec=f"best[height<={max_height}]/best[width<={max_height}]",
+        )
+
     video, audio = separate_choice
     video_id = _safe_format_id(video.format_id)
     audio_id = _safe_format_id(audio.format_id)
@@ -134,13 +209,19 @@ def select_format(
             ErrorCode.UNSUPPORTED_CONTENT,
             "No downloadable video quality was found for this link.",
         )
-    sizes = [_known_size(video), _known_size(audio)]
+    sizes = [
+        _estimated_size(video, duration_seconds),
+        _estimated_size(audio, duration_seconds),
+    ]
     estimated_size = None if None in sizes else sum(size or 0 for size in sizes)
     return FormatSelection(
         format_spec=f"{video_id}+{audio_id}",
         video_format_id=video_id,
         audio_format_id=audio_id,
-        expected_height=video.height,
+        expected_height=min(_quality_height(video) or max_height, max_height),
         estimated_bytes=estimated_size,
         combined=False,
+        fallback_format_spec=(
+            f"{video_id}+bestaudio/best[height<={max_height}]/best[width<={max_height}]"
+        ),
     )

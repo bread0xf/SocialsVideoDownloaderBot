@@ -50,7 +50,11 @@ async def _run_ffmpeg(args: list[str], *, timeout_seconds: int) -> None:
 
 
 def _transcode_filter(max_height: int) -> str:
-    return f"scale=w=-2:h='trunc(min({max_height},ih)/2)*2'"
+    return (
+        "scale="
+        f"w='if(gte(iw,ih),-2,trunc(min({max_height},iw)/2)*2)':"
+        f"h='if(gte(iw,ih),trunc(min({max_height},ih)/2)*2,-2)'"
+    )
 
 
 async def prepare_media(
@@ -60,7 +64,7 @@ async def prepare_media(
     max_height: int,
     max_bytes: int,
     max_duration_seconds: int,
-    ffmpeg_timeout_seconds: int = 180,
+    ffmpeg_timeout_seconds: int = 600,
 ) -> PreparedMedia:
     initial = await probe_media(source)
     if initial.size_bytes > max_bytes:
@@ -86,7 +90,7 @@ async def prepare_media(
         "-1",
     ]
 
-    if initial.height <= max_height and initial.video_codec == "h264":
+    if initial.quality_height <= max_height and initial.video_codec == "h264":
         if initial.audio_codec in (None, "aac"):
             args = ["-i", str(source), *common, "-c", "copy", str(target)]
         else:

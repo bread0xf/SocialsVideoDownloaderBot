@@ -6,8 +6,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH"
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg \
+    && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# Deno runs yt-dlp-ejs JavaScript challenge solvers (required for YouTube).
+ARG DENO_VERSION=v2.9.6
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh -s "${DENO_VERSION}"
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.15 /uv /usr/local/bin/uv
 

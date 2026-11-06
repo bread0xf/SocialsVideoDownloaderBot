@@ -18,6 +18,10 @@ class ProbeResult:
     format_name: str | None
     size_bytes: int
 
+    @property
+    def quality_height(self) -> int:
+        return min(self.width, self.height)
+
 
 def _as_float(value: object) -> float | None:
     if isinstance(value, bool):
@@ -147,7 +151,7 @@ def validate_probe(
             ErrorCode.DURATION_LIMIT,
             "This video is longer than the supported limit.",
         )
-    if probe.height > max_height:
+    if probe.quality_height > max_height:
         raise AppError(
             ErrorCode.UNSUPPORTED_CONTENT,
             "This video does not provide a quality allowed on your plan.",

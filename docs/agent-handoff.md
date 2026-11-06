@@ -36,12 +36,11 @@ The Phase 0/1 implementation is committed in `1e92011`. The working tree current
 
 ### Partial or still unverified
 
-- yt-dlp adapter: no tests against real extractors or redirect chains.
-- FFmpeg/FFprobe: no real media-fixture integration test; worker tests mock probing.
 - Telegram delivery: exercised with fakes, not the live Bot API.
 - Cache expiry/size-eviction and stale-job reconciliation: implemented but no dedicated tests.
 - Bot command/URL handlers: no handler-level tests.
-- Extractor redirect/SSRF validation: ingestion DNS guard exists; redirect validation at download/extraction time is still pending.
+- DNS/SSRF: ingestion DNS guard is wired into the bot and worker, and the extractor's final URL is validated against the platform allowlist. Controlled egress for full DNS-rebinding protection is still pending.
+- Live extraction tests are network-dependent and only run when explicitly enabled.
 - Production operational checks are not complete.
 
 ## Quality gate status
@@ -52,10 +51,26 @@ Last run on 2026-11-06:
 uv run ruff check .                 # passed
 uv run ruff format --check .        # passed
 uv run mypy backend apps            # passed, 49 files
-uv run pytest -q                    # passed, 89 tests
+uv run pytest -q                    # passed, 142 tests, 5 skipped (with PostgreSQL running)
 ```
 
-Test split: 77 unit tests, 12 integration tests.
+Test split: 128 unit tests, 14 integration tests (12 need PostgreSQL, 2 run FFmpeg media processing); 5 live extraction tests are gated. Live extraction smoke on 2026-11-06 passed metadata and download preparation for YouTube, TikTok, Instagram and Facebook:
+
+```bash
+SVDB_LIVE_EXTRACTION=1 \
+YOUTUBE_SAMPLE_URL=... TIKTOK_SAMPLE_URL=... \
+INSTAGRAM_SAMPLE_URL=... FACEBOOK_SAMPLE_URL=... \
+uv run pytest -q tests/integration/test_live_extraction.py
+```
+
+Verified samples on 2026-11-06:
+
+- YouTube: `https://www.youtube.com/watch?v=dQw4w9WgXcQ`
+- TikTok: `https://www.tiktok.com/@cookierun_dev/video/7039716639834656002`
+- Instagram: `https://www.instagram.com/reel/Chunk8-jurw/`
+- Facebook: `https://www.facebook.com/cnn/videos/10155529876156509/`
+
+Some older Facebook URLs fail with yt-dlp's `Cannot parse data`; that is an extractor limitation, not a URL-normalization issue.
 
 Integration tests need PostgreSQL. They use `TEST_DATABASE_URL` when set, otherwise create a temporary `svdb_test_<hex>` database on the server in `DATABASE_URL` and drop it afterwards. If PostgreSQL is unavailable the integration fixture skips.
 
@@ -120,18 +135,24 @@ uv run pytest -q
 - `WorkerSettings.on_startup`/`on_shutdown` use a typed cast because of arq's `StartupShutdown` protocol typing.
 - Async code must not call blocking `pathlib` operations directly; Ruff `ASYNC240` is enabled. Use `asyncio.to_thread` for file I/O when needed.
 - The initial migration was generated and formatted with Ruff. Prefer Alembic autogenerate for future schema changes; do not rely on `Base.metadata.create_all` outside tests.
+- YouTube extraction requires `yt-dlp-ejs` plus a supported JS runtime (Deno 2.3+ is installed). `yt-dlp-ejs` is a project dependency; do not remove it.
+- TikTok extraction works without `curl_cffi` impersonation today, but yt-dlp emits a warning. If TikTok extraction starts failing, evaluate adding the optional `curl-cffi` extra rather than bypassing restrictions.
+- `--max-downloads` breaks `--skip-download --dump-single-json` in yt-dlp 2026.10.26 (exit 101, no stderr). Do not re-add it; `--no-playlist` plus single-output collection is used instead.
+- Resolution ceilings use the shorter video dimension (`min(width, height)`) so portrait videos from TikTok/Instagram are handled correctly. If no rendition is at or below the ceiling, selection picks the smallest available and FFmpeg downscales it.
+- Silent videos are valid. Selection delivers video-only when the source has no audio stream.
+- `YtDlpAdapter` uses separate metadata (60 s) and download (900 s) timeouts; worker startup passes both.
+- Multi-video carousels and playlists are rejected by design. A carousel with exactly one video entry is accepted at metadata level; download still targets the original post URL.
 - Do not log bot tokens, payment secrets, authorization headers, cookies, full sensitive URLs, or raw payment payloads.
 
 ## Recommended next work
 
-1. Extraction engine: split metadata and download timeouts, add real extractor redirect/SSRF validation, and add yt-dlp fixture tests.
-2. Enforce tier-specific size and duration limits (free 48 MiB / 600 s vs. Premium 1.9 GB / 1800 s) in the worker.
-3. Add real media fixture tests for the FFmpeg + FFprobe path.
-4. Add Telegram delivery error-mapping tests and a live/manual Bot API smoke test procedure.
-5. Add cache expiry/size-eviction and stale-job reconciliation integration tests.
-6. Add handler tests for `/start`, `/help`, `/status`, duplicate Telegram updates, and URL intake.
-7. Improve `/health/ready` coverage with live PostgreSQL/Redis checks.
-8. Re-run all quality gates and update `docs/implementation-status.md`.
+1. Enforce tier-specific size and duration limits (free 48 MiB / 600 s vs. Premium 1.9 GB / 1800 s) in the worker.
+2. Add Telegram delivery error-mapping tests and a live/manual Bot API smoke test procedure.
+3. Add cache expiry/size-eviction and stale-job reconciliation integration tests.
+4. Add handler tests for `/start`, `/help`, `/status`, duplicate Telegram updates, and URL intake.
+5. Improve `/health/ready` coverage with live PostgreSQL/Redis checks.
+6. Consider a controlled egress proxy for full redirect and DNS-rebinding enforcement.
+7. Re-run all quality gates and update `docs/implementation-status.md`.
 
 ## Decision status (updated 2026-11-06)
 

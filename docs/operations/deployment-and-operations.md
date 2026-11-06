@@ -15,6 +15,15 @@ Suggested Compose services:
 
 Use one application image with different commands/entrypoints where practical.
 
+## Extraction runtime
+
+The application image must include:
+- `yt-dlp` and `yt-dlp-ejs` (Python dependencies).
+- A supported JavaScript runtime: Deno 2.3+ is installed in the image and is required for YouTube JS challenge solving.
+- FFmpeg and FFprobe.
+
+Keep yt-dlp current; extractor changes and temporary platform blocks are expected. Live smoke tests are available in `tests/integration/test_live_extraction.py` and are gated by `SVDB_LIVE_EXTRACTION=1`.
+
 ## Environment configuration
 
 Document and validate variables such as:
@@ -27,13 +36,19 @@ Document and validate variables such as:
 - `PUBLIC_API_BASE_URL`
 - `MEDIA_CACHE_DIR`
 - `MEDIA_CACHE_MAX_BYTES`
+- `MEDIA_RETENTION_HOURS`
 - `JOB_TIMEOUT_SECONDS`
+- `EXTRACTOR_METADATA_TIMEOUT_SECONDS`
+- `EXTRACTOR_DOWNLOAD_TIMEOUT_SECONDS`
+- `FFMPEG_TIMEOUT_SECONDS`
 - `MAX_MEDIA_BYTES`
 - `MAX_MEDIA_DURATION_SECONDS`
+- `TELEGRAM_UPLOAD_MAX_BYTES`
 - `WORKER_CONCURRENCY`
 - `FREE_DAILY_LIMIT`
-- `FREE_MAX_HEIGHT`
-- `PREMIUM_MAX_HEIGHT`
+- `FREE_MAX_RESOLUTION_P`
+- `PREMIUM_MAX_RESOLUTION_P`
+- `PREMIUM_DAILY_LIMIT`
 - Billing/reward provider secrets when those integrations are approved.
 
 Do not commit real values. Keep `.env.example` placeholders nonfunctional.

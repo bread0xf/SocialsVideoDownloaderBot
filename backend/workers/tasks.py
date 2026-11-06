@@ -25,7 +25,7 @@ from backend.media.selection import select_format
 from backend.platforms.adapters.base import PlatformAdapter
 from backend.platforms.adapters.ytdlp import YtDlpAdapter
 from backend.platforms.registry import platform_registry
-from backend.platforms.urls import NormalizedURL, normalize_url
+from backend.platforms.urls import NormalizedURL, normalize_url, resolve_public_addresses
 from backend.storage.cache import remove_cache_file, store_cache_file
 from backend.storage.workspace import cleanup_stale_workspaces, job_workspace
 from backend.usage.service import commit_quota, release_quota
@@ -224,7 +224,7 @@ async def _finalize_delivered(
                 job.status = transition(job.status, JobStatus.COMPLETED.value).value
                 job.stage = JobStatus.COMPLETED.value
                 job.completed_at = now
-                job.selected_resolution_p = media.probe.height
+                job.selected_resolution_p = media.probe.quality_height
                 job.output_bytes = media.probe.size_bytes
                 job.media_key = media_key
 
@@ -387,6 +387,7 @@ async def process_download(ctx: dict[str, Any], job_id: str) -> str:
                 return "completed" if finalized else "completed_unfinalized"
 
         with job_workspace(settings.media_root, snapshot.job_id) as workspace:
+            await resolve_public_addresses(normalized_url.host)
             metadata = await _adapter(ctx).inspect(normalized_url, workspace.path)
             if metadata.is_live:
                 raise AppError(ErrorCode.UNSUPPORTED_CONTENT, "Live streams are not supported.")
@@ -403,6 +404,7 @@ async def process_download(ctx: dict[str, Any], job_id: str) -> str:
                 metadata.formats,
                 max_height=max_height,
                 max_bytes=max_bytes,
+                duration_seconds=metadata.duration_seconds,
             )
             await _set_status(ctx, snapshot.job_id, JobStatus.SELECTING_FORMAT)
             source_path = await _adapter(ctx).download(
@@ -665,7 +667,10 @@ async def worker_startup(ctx: dict[Any, Any]) -> None:
     engine = build_engine(settings)
     ctx["db_engine"] = engine
     ctx["session_factory"] = build_session_factory(engine)
-    ctx["adapter"] = YtDlpAdapter(extractor_timeout_seconds=settings.extractor_timeout_seconds)
+    ctx["adapter"] = YtDlpAdapter(
+        metadata_timeout_seconds=settings.extractor_metadata_timeout_seconds,
+        download_timeout_seconds=settings.extractor_download_timeout_seconds,
+    )
     if settings.telegram_token:
         from telegram import Bot
 

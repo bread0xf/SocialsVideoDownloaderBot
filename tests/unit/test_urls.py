@@ -100,6 +100,69 @@ from backend.platforms import urls
             "public_video",
             "dQw4w9WgXcQ",
         ),
+        (
+            "https://www.tiktok.com/t/ZTabc12345/",
+            "https://www.tiktok.com/t/ZTabc12345/",
+            "tiktok",
+            "public_video",
+            "ZTabc12345",
+        ),
+        (
+            "https://m.tiktok.com/v/1234567890.html",
+            "https://m.tiktok.com/v/1234567890.html",
+            "tiktok",
+            "public_video",
+            "1234567890",
+        ),
+        (
+            "https://www.instagram.com/share/reel/AbCdEf123/",
+            "https://www.instagram.com/reel/AbCdEf123/",
+            "instagram",
+            "public_reel",
+            "AbCdEf123",
+        ),
+        (
+            "https://www.instagram.com/reels/AbCdEf123/",
+            "https://www.instagram.com/reel/AbCdEf123/",
+            "instagram",
+            "public_reel",
+            "AbCdEf123",
+        ),
+        (
+            "https://www.youtube.com/embed/dQw4w9WgXcQ",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "youtube",
+            "public_video",
+            "dQw4w9WgXcQ",
+        ),
+        (
+            "https://www.youtube.com/live/dQw4w9WgXcQ",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "youtube",
+            "public_video",
+            "dQw4w9WgXcQ",
+        ),
+        (
+            "https://music.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "youtube",
+            "public_video",
+            "dQw4w9WgXcQ",
+        ),
+        (
+            "https://www.facebook.com/reels/1234567890",
+            "https://www.facebook.com/reel/1234567890/",
+            "facebook",
+            "public_reel",
+            "1234567890",
+        ),
+        (
+            "https://www.facebook.com/share/r/AbCdEf123/",
+            "https://www.facebook.com/share/r/AbCdEf123/",
+            "facebook",
+            "public_video",
+            "AbCdEf123",
+        ),
     ],
 )
 def test_normalize_url_canonicalizes_supported_links(
@@ -137,6 +200,9 @@ def test_normalize_url_canonicalizes_supported_links(
         ("https://youtube.com/../watch?v=dQw4w9WgXcQ", ErrorCode.INVALID_URL),
         ("https://youtube.com/%2e%2e/watch?v=dQw4w9WgXcQ", ErrorCode.INVALID_URL),
         ("https://youtube.com\\watch?v=dQw4w9WgXcQ", ErrorCode.INVALID_URL),
+        ("https://www.tiktok.com/t/", ErrorCode.UNSUPPORTED_CONTENT),
+        ("https://www.youtube.com/live/short", ErrorCode.UNSUPPORTED_CONTENT),
+        ("https://www.instagram.com/share/reel/", ErrorCode.UNSUPPORTED_CONTENT),
     ],
 )
 def test_normalize_url_rejects_bad_links(raw: str, code: ErrorCode) -> None:
@@ -220,5 +286,39 @@ async def test_resolve_public_addresses_rejects_empty_results(
 
     with pytest.raises(UrlValidationError) as exc_info:
         await urls.resolve_public_addresses("youtube.com")
+
+    assert exc_info.value.code == ErrorCode.URL_BLOCKED
+
+
+def test_validate_extracted_url_allows_same_platform_redirect() -> None:
+    original = urls.normalize_url("https://vt.tiktok.com/ZSabc123/")
+
+    urls.validate_extracted_url(
+        original,
+        "https://www.tiktok.com/@creator/video/1234567890",
+    )
+
+
+def test_validate_extracted_url_allows_missing_url() -> None:
+    original = urls.normalize_url("https://youtu.be/dQw4w9WgXcQ")
+
+    urls.validate_extracted_url(original, None)
+
+
+@pytest.mark.parametrize(
+    "extracted_url",
+    [
+        "https://www.facebook.com/watch/?v=1234567890",
+        "https://evil.example/watch?v=dQw4w9WgXcQ",
+        "https://www.instagram.com/accounts/login/",
+    ],
+)
+def test_validate_extracted_url_rejects_cross_platform_or_unlisted_urls(
+    extracted_url: str,
+) -> None:
+    original = urls.normalize_url("https://youtu.be/dQw4w9WgXcQ")
+
+    with pytest.raises(UrlValidationError) as exc_info:
+        urls.validate_extracted_url(original, extracted_url)
 
     assert exc_info.value.code == ErrorCode.URL_BLOCKED

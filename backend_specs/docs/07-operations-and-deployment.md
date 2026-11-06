@@ -48,6 +48,7 @@ Python:
 - `fastapi`
 - `uvicorn`
 - `yt-dlp`
+- `yt-dlp-ejs` (JavaScript challenge solver scripts required by the YouTube extractor)
 - `SQLAlchemy`
 - `asyncpg`
 - `alembic`
@@ -63,7 +64,7 @@ External:
 - PostgreSQL
 - Redis
 - Docker Engine + Docker Compose
-- Deno recommended where required by current yt-dlp extractor paths; verify current yt-dlp documentation at implementation/deployment time.
+- Deno 2.3+ (required for yt-dlp EJS challenge solving on YouTube; re-verify current yt-dlp requirements at deployment time).
 
 Development:
 - `pytest`, `pytest-asyncio`, `pytest-cov`, `ruff`

@@ -16,6 +16,7 @@ class MediaFormat:
     filesize: int | None
     tbr: float | None
     protocol: str | None
+    has_drm: bool = False
 
     @property
     def has_video(self) -> bool:
@@ -34,6 +35,7 @@ class MediaMetadata:
     webpage_url: str | None
     extractor: str | None
     formats: tuple[MediaFormat, ...]
+    availability: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +46,7 @@ class FormatSelection:
     expected_height: int | None
     estimated_bytes: int | None
     combined: bool
+    fallback_format_spec: str | None = None
 
 
 class PlatformAdapter(Protocol):

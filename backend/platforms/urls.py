@@ -12,18 +12,25 @@ from backend.core.errors import ErrorCode, UrlValidationError
 _YOUTUBE_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 _YOUTUBE_SHORTS_PATH = re.compile(r"^/shorts/([A-Za-z0-9_-]{11})/?$")
 _YOUTUBE_WATCH_PATH = re.compile(r"^/watch/?$")
+_YOUTUBE_EMBED_PATH = re.compile(r"^/(?:embed|v|e|live)/([A-Za-z0-9_-]{11})/?$")
 _YOUTUBE_SHORT_PATH = re.compile(r"^/([A-Za-z0-9_-]{11})/?$")
 
 _TIKTOK_VIDEO_PATH = re.compile(r"^/@([A-Za-z0-9._-]{1,64})/video/(\d{6,})/?$")
+_TIKTOK_SHARE_PATH = re.compile(r"^/t/([A-Za-z0-9]{5,32})/?$")
+_TIKTOK_MOBILE_VIDEO_PATH = re.compile(r"^/v/(\d{6,})\.html$")
 _TIKTOK_SHORT_PATH = re.compile(r"^/([A-Za-z0-9]{5,32})/?$")
 
 _INSTAGRAM_PATH = re.compile(r"^/(reel|p|tv)/([A-Za-z0-9_-]{5,64})/?$")
+_INSTAGRAM_SHARE_REEL_PATH = re.compile(r"^/share/reel/([A-Za-z0-9_-]{5,64})/?$")
+_INSTAGRAM_REELS_PATH = re.compile(r"^/reels/([A-Za-z0-9_-]{5,64})/?$")
 
 _FACEBOOK_WATCH_PATH = re.compile(r"^/watch/?$")
 _FACEBOOK_REEL_PATH = re.compile(r"^/reel/(\d{5,})/?$")
+_FACEBOOK_REELS_PATH = re.compile(r"^/reels/(\d{5,})/?$")
 _FACEBOOK_VIDEO_PATH = re.compile(r"^/([A-Za-z0-9._-]{1,100})/videos/(\d{5,})/?$")
 _FACEBOOK_VIDEO_PHP_PATH = re.compile(r"^/video\.php/?$")
 _FACEBOOK_SHARE_PATH = re.compile(r"^/share/v/([A-Za-z0-9_-]{5,64})/?$")
+_FACEBOOK_SHARE_REEL_PATH = re.compile(r"^/share/r/([A-Za-z0-9_-]{5,64})/?$")
 _FACEBOOK_SHORT_PATH = re.compile(r"^/([A-Za-z0-9_-]{5,32})/?$")
 
 _HOST_PLATFORMS = {
@@ -37,6 +44,7 @@ _HOST_PLATFORMS = {
     "youtube.com": "youtube",
     "www.youtube.com": "youtube",
     "m.youtube.com": "youtube",
+    "music.youtube.com": "youtube",
     "youtu.be": "youtube",
     "facebook.com": "facebook",
     "www.facebook.com": "facebook",
@@ -125,6 +133,28 @@ def _normalize_tiktok(host: str, path: str) -> NormalizedURL:
             source_id=code,
         )
 
+    share_match = _TIKTOK_SHARE_PATH.match(path)
+    if share_match:
+        code = share_match.group(1)
+        return NormalizedURL(
+            url=f"https://www.tiktok.com/t/{code}/",
+            platform="tiktok",
+            content_type="public_video",
+            host="www.tiktok.com",
+            source_id=code,
+        )
+
+    mobile_match = _TIKTOK_MOBILE_VIDEO_PATH.match(path)
+    if mobile_match:
+        video_id = mobile_match.group(1)
+        return NormalizedURL(
+            url=f"https://m.tiktok.com/v/{video_id}.html",
+            platform="tiktok",
+            content_type="public_video",
+            host="m.tiktok.com",
+            source_id=video_id,
+        )
+
     match = _TIKTOK_VIDEO_PATH.match(path)
     if not match:
         raise _unsupported_content()
@@ -139,6 +169,28 @@ def _normalize_tiktok(host: str, path: str) -> NormalizedURL:
 
 
 def _normalize_instagram(host: str, path: str) -> NormalizedURL:
+    share_match = _INSTAGRAM_SHARE_REEL_PATH.match(path)
+    if share_match:
+        shortcode = share_match.group(1)
+        return NormalizedURL(
+            url=f"https://www.instagram.com/reel/{shortcode}/",
+            platform="instagram",
+            content_type="public_reel",
+            host="www.instagram.com",
+            source_id=shortcode,
+        )
+
+    reels_match = _INSTAGRAM_REELS_PATH.match(path)
+    if reels_match:
+        shortcode = reels_match.group(1)
+        return NormalizedURL(
+            url=f"https://www.instagram.com/reel/{shortcode}/",
+            platform="instagram",
+            content_type="public_reel",
+            host="www.instagram.com",
+            source_id=shortcode,
+        )
+
     match = _INSTAGRAM_PATH.match(path)
     if not match:
         raise _unsupported_content()
@@ -190,6 +242,17 @@ def _normalize_youtube(host: str, path: str, query: str) -> NormalizedURL:
             source_id=video_id,
         )
 
+    embed_match = _YOUTUBE_EMBED_PATH.match(path)
+    if embed_match:
+        video_id = embed_match.group(1)
+        return NormalizedURL(
+            url=f"https://www.youtube.com/watch?v={video_id}",
+            platform="youtube",
+            content_type="public_video",
+            host="www.youtube.com",
+            source_id=video_id,
+        )
+
     raise _unsupported_content()
 
 
@@ -228,6 +291,28 @@ def _normalize_facebook(host: str, path: str, query: str) -> NormalizedURL:
             content_type="public_reel",
             host="www.facebook.com",
             source_id=reel_id,
+        )
+
+    reels_match = _FACEBOOK_REELS_PATH.match(path)
+    if reels_match:
+        reel_id = reels_match.group(1)
+        return NormalizedURL(
+            url=f"https://www.facebook.com/reel/{reel_id}/",
+            platform="facebook",
+            content_type="public_reel",
+            host="www.facebook.com",
+            source_id=reel_id,
+        )
+
+    share_reel_match = _FACEBOOK_SHARE_REEL_PATH.match(path)
+    if share_reel_match:
+        code = share_reel_match.group(1)
+        return NormalizedURL(
+            url=f"https://www.facebook.com/share/r/{code}/",
+            platform="facebook",
+            content_type="public_video",
+            host="www.facebook.com",
+            source_id=code,
         )
 
     share_match = _FACEBOOK_SHARE_PATH.match(path)
@@ -297,6 +382,23 @@ def normalize_url(raw_url: str) -> NormalizedURL:
     if normalized.content_type not in _CONTENT_TYPES[normalized.platform]:
         raise _unsupported_content()
     return normalized
+
+
+def validate_extracted_url(original: NormalizedURL, extracted_url: str | None) -> None:
+    if not extracted_url:
+        return
+    try:
+        resolved = normalize_url(extracted_url)
+    except UrlValidationError as exc:
+        raise UrlValidationError(
+            ErrorCode.URL_BLOCKED,
+            "That link redirected to an unsupported destination.",
+        ) from exc
+    if resolved.platform != original.platform:
+        raise UrlValidationError(
+            ErrorCode.URL_BLOCKED,
+            "That link redirected to an unsupported destination.",
+        )
 
 
 def _is_global_address(raw_address: str) -> bool:

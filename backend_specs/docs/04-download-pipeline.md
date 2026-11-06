@@ -22,7 +22,7 @@ Persist state transitions. Reject invalid transitions. Record stage timestamps a
 
 1. Receive Telegram update and deduplicate it.
 2. Parse URL and create a job record.
-3. Validate scheme, host, DNS, redirects and supported platform/content type.
+3. Validate scheme, host, DNS, redirects and supported platform/content type. Revalidate the extractor's final URL against the platform allowlist before downloading.
 4. Resolve user's current entitlement.
 5. Atomically reserve included allowance or reward credit.
 6. Persist job and outbox event in one DB transaction.
@@ -54,12 +54,15 @@ Persist state transitions. Reject invalid transitions. Record stage timestamps a
 
 - Free max resolution: 480p.
 - Premium max resolution: 2160p, subject to configured limits.
+- Resolution is the shorter video dimension (`min(width, height)`), so portrait videos are classified correctly.
 - Prefer highest eligible resolution.
 - Prefer combined A/V when equivalent; otherwise select compatible streams and merge.
 - Reject formats exceeding configured max bytes, duration, codec/container or processing budgets.
+- If the platform exposes no rendition at or below the plan ceiling, select the smallest available rendition and downscale it to the ceiling.
+- Silent videos are valid; deliver video-only when the source has no audio stream.
 - Do not upscale.
 - Do not claim a resolution unsupported by source.
-- FFprobe validates actual output; metadata alone is insufficient.
+- FFprobe validates actual output; metadata alone is insufficient. Output validation also uses the shorter dimension.
 
 ## 5. Resource controls
 

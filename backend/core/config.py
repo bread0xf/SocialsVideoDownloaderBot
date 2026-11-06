@@ -49,7 +49,8 @@ class Settings(BaseSettings):
     worker_concurrency: int = Field(default=2, ge=1)
     telegram_upload_max_bytes: int = Field(default=50 * 1024**2, ge=1)
 
-    extractor_timeout_seconds: int = Field(default=120, ge=1)
+    extractor_metadata_timeout_seconds: int = Field(default=60, ge=1)
+    extractor_download_timeout_seconds: int = Field(default=900, ge=1)
     ffmpeg_timeout_seconds: int = Field(default=600, ge=1)
     download_max_attempts: int = Field(default=3, ge=1)
     outbox_poll_interval_seconds: int = Field(default=2, ge=1)

@@ -21,6 +21,8 @@ def test_approved_operational_limits() -> None:
     assert settings.max_media_bytes == 48 * 1024**2
     assert settings.max_media_duration_seconds == 600
     assert settings.worker_concurrency == 2
+    assert settings.extractor_metadata_timeout_seconds == 60
+    assert settings.extractor_download_timeout_seconds == 900
     assert settings.ffmpeg_timeout_seconds == 600
     assert settings.job_timeout_seconds == 1800
     assert settings.job_max_age_seconds == 7200

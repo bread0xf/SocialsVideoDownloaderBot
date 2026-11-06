@@ -78,7 +78,10 @@ class WorkerSettings(WorkerSettingsBase):
     max_jobs = _settings.worker_concurrency
     job_timeout = max(
         _settings.job_timeout_seconds,
-        _settings.extractor_timeout_seconds + _settings.ffmpeg_timeout_seconds + 120,
+        _settings.extractor_metadata_timeout_seconds
+        + _settings.extractor_download_timeout_seconds
+        + _settings.ffmpeg_timeout_seconds
+        + 120,
     )
     max_tries = 1
     keep_result = 0

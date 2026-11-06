@@ -13,7 +13,7 @@ from backend.core.logging import configure_logging
 from backend.database.session import build_engine, build_session_factory, session_scope
 from backend.downloads.service import submit_download
 from backend.entitlements.service import resolve_entitlement
-from backend.platforms.urls import normalize_url
+from backend.platforms.urls import normalize_url, resolve_public_addresses
 from backend.usage.service import included_usage
 from backend.users.service import TelegramIdentity, upsert_telegram_user
 
@@ -99,6 +99,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     try:
         normalized = normalize_url(message.text)
+        await resolve_public_addresses(normalized.host)
     except AppError as exc:
         await message.reply_text(exc.safe_message)
         return
