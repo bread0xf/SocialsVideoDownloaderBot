@@ -9,7 +9,8 @@ A Telegram bot for downloading publicly accessible videos from supported social 
 - **Delivery:** Telegram
 - **Commercial model:** Freemium + monthly Premium
 - **Free allowance:** 5 successful downloads per `Africa/Lagos` calendar day
-- **Rewarded allowance:** 1 additional download per successfully verified rewarded-ad event (provider pending)
+- **Premium allowance:** 20 successful downloads per `Africa/Lagos` calendar day, 150 Telegram Stars per 30-day month
+- **Rewarded allowance:** 1 additional download per verified ad event, delivered as a bot-managed chat ad (daily cap and expiry pending)
 - **Free quality:** 480p ceiling (locked)
 - **Premium quality:** Best supported source quality, up to 4K where source, processing, Telegram and deployment limits allow
 - **Architecture:** Python modular monolith, deployed as separate bot/API/worker/scheduler processes from one codebase
@@ -48,7 +49,9 @@ Python, `python-telegram-bot`, FastAPI, yt-dlp behind a replaceable extraction i
 
 Phase 0 skeleton and the Phase 1 free-tier download slice are implemented: URL validation and platform registry, user/job persistence, entitlement resolution, atomic quota reservation with ledger entries, transactional outbox to ARQ, yt-dlp/FFmpeg processing, Telegram delivery, cache lookup, and expiry/size cleanup tasks.
 
-Remaining hardening work is tracked in `docs/implementation-status.md`: real extractor/media fixture tests, live Telegram delivery tests, cache-cleanup and stale-job tests, and extractor redirect/SSRF validation. Premium purchase, rewarded ads, and sponsor features remain blocked on owner decisions.
+Remaining hardening work is tracked in `docs/implementation-status.md`: real extractor/media fixture tests, live Telegram delivery tests, cache-cleanup and stale-job tests, and extractor redirect/SSRF validation. Premium pricing and allowance are approved; billing, rewarded ads and sponsor features are not implemented yet.
+
+For a temporary implementation handoff, see `docs/agent-handoff.md`.
 
 `backend_specs/` is the implementation baseline; where `docs/` conflicts with it, `backend_specs/` wins.
 

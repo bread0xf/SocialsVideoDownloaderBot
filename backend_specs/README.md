@@ -53,7 +53,7 @@ The product accepts supported public URLs, automatically selects the best permit
 
 ## Important unresolved values
 
-Do not invent or silently hardcode Premium allowance/pricing, reward-credit expiry, ad provider, daily reward cap, or free-tier file-size/duration/concurrency ceilings. Keep these configurable and mark the relevant feature as blocked or disabled until product decisions are supplied. See `docs/09-open-decisions.md`.
+Premium pricing (150 Stars / 30 days) and allowance (20/day) are approved. Reward delivery direction is approved as bot-managed chat ads. Free/Premium size, duration, concurrency and timeout limits are approved and recorded in `docs/09-open-decisions.md`. Do not invent the reward daily cap or reward-credit expiry; keep them configurable and mark the feature as disabled until product decisions are supplied.
 
 ## Implementation rule
 

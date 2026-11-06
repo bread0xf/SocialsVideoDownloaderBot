@@ -1,6 +1,6 @@
 # Freemium, Billing and Entitlements
 
-**Status:** Core policy direction agreed. Free allowance, free quality ceiling, quota timezone and media retention are locked by `backend_specs/`. Premium pricing/allowance and reward-provider details remain open.
+**Status:** Core policy direction agreed. Free allowance, free quality ceiling, quota timezone and media retention are locked by `backend_specs/`. Premium pricing and allowance were approved on 2026-11-06. Reward provider mechanics remain partially open.
 
 > `backend_specs/` is the implementation baseline. Where this document conflicts with it, the specification pack wins.
 
@@ -8,14 +8,16 @@
 
 | Capability | Free | Premium |
 |---|---|---|
-| Daily allowance | 5 successful downloads per `Africa/Lagos` calendar day | Higher configured quota — OPEN |
-| Rewarded extra download | Proposed: +1 per verified ad | OPEN |
+| Daily allowance | 5 successful downloads per `Africa/Lagos` calendar day | 20 successful downloads per `Africa/Lagos` calendar day |
+| Rewarded extra download | One additional download per verified ad | Proposed: not eligible, because Premium excludes sponsor placements |
 | Output quality | Up to 480p (locked ceiling) | Best supported, up to 4K |
 | Processing priority | Standard | Proposed priority queue |
-| Bot-owned sponsor placements | May be shown | Excluded |
-| Billing | No subscription | Monthly subscription |
+| Bot-owned sponsor placements | Exactly one per successful download, sent after delivery | Excluded |
+| Billing | No subscription | 150 Telegram Stars per 30-day month, purchased through bot commands |
 
 Telegram's own advertising product is separate from sponsor placements controlled by the bot operator.
+
+Sponsor policy (approved 2026-11-06): free users receive exactly one placement per successful download, sent after the media file is delivered. No placement is shown on failed or failed-to-deliver jobs. Content moderation is deferred to the next phase. No PII is collected and no user-preference tracking is performed; placements are not personalized. Any free user can purchase Premium through bot commands, with checkout following Telegram's Stars process.
 
 ## 2. Quota semantics
 
@@ -30,26 +32,25 @@ Telegram's own advertising product is separate from sponsor placements controlle
 
 ## 3. Rewarded credits
 
-Proposed behavior: a verified completed ad event grants one additional download credit.
+Approved behavior (2026-11-06): a verified ad event grants one additional download credit, delivered as a bot-managed chat/sponsor message. Users may earn repeatedly, subject to the daily cap.
 
 Still unresolved:
-- Provider and integration type.
-- Whether the provider supports server-side reward verification.
-- Daily reward cap.
-- Credit expiry.
-- Whether Premium users can earn credits.
+- Exact delivery mechanism: bot-managed message with a single-use server token vs. third-party rewarded-ad network.
+- Daily reward cap (proposed: 10 rewarded downloads per user per Lagos day).
+- Credit expiry (proposed: end of the Lagos quota day earned).
+- Whether Premium users can earn credits (proposed: no, because Premium excludes sponsor placements).
 - Geographic availability and monetization suitability.
-- Provider callback authentication and replay defense.
+- Callback/postback authentication and replay defense.
 
-Never grant a credit from a client-side “ad watched” message alone. If provider verification is unavailable, do not ship rewarded credits.
+Telegram has no official rewarded-ad API for bots, and official Sponsored Messages do not expose a per-user completion event. Never grant a credit from a client-side “ad watched” message alone. A bot-managed placement must use a single-use, server-issued token and a minimum dwell time; a third-party provider must use authenticated server-to-server postback. If neither can be enforced, do not ship rewarded credits.
 
 ## 4. Premium subscription
 
-- Monthly subscription.
-- Telegram Stars is the initial proposed payment rail.
+- Monthly subscription; Telegram Stars subscription periods are fixed at 30 days.
+- Telegram Stars is the payment rail.
 - Access remains valid through the recorded `paid_through` instant; entitlement expires after it.
-- Price in Stars: OPEN.
-- Premium quota: OPEN.
+- Price: 150 Stars per 30-day month (approved 2026-11-06).
+- Premium quota: 20 included downloads per `Africa/Lagos` day (approved 2026-11-06).
 - Grace period, cancellation, refund and renewal behavior: define before launch.
 - Store Telegram payment identifiers and provider payload references with appropriate access controls.
 - Verify successful payment through trusted Telegram payment updates; do not trust client claims.

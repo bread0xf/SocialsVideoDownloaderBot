@@ -22,8 +22,10 @@
 | 24-hour media cleanup | Partial | `backend/workers/tasks.py`, `backend/storage/cache.py` | — | Expiry and size eviction implemented; cleanup tests pending |
 | Recovery/idempotency | Partial | `backend/workers/tasks.py` | `tests/integration/test_worker_outcomes.py`, `test_outbox_dispatch.py` | Retry/terminal failure and outbox retry covered; stale-job reconciliation tests pending |
 | Security tests | Partial | `backend/platforms/urls.py`, `backend/platforms/adapters/ytdlp.py` | `tests/unit/test_urls.py` | URL/DNS/SSRF ingestion checks covered; extractor redirect validation tests pending |
-| Premium/payment integration | Blocked by OD-01/02 | — | — | Do not implement purchase UI or price |
-| Rewarded ads | Blocked by OD-03/04/05 | — | — | Provider interface only until selected |
+| Operational limits (OD-06) | Partial | `backend/core/config.py` | `tests/unit/test_config.py` | Approved defaults applied; tier-specific size/duration enforcement and metadata/download timeout split pending |
+| Sponsor placements | Not started — policy approved | — | — | Free users only; one placement per successful download, after delivery; moderation deferred |
+| Premium/payment integration | Not started — pricing resolved | — | — | 150 Stars / 30 days and 20/day approved 2026-11-06; billing module not implemented |
+| Rewarded ads | Not started — direction resolved | — | — | Bot-managed chat ads; 1 credit per ad. Daily cap and credit expiry proposed, pending approval |
 | Sponsor system | Later phase | — | — | — |
 | Mini App | Later phase | — | — | — |
 
@@ -53,4 +55,4 @@ Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` to an isolated dat
 
 ## Next task
 
-Harden the Phase 1 slice: real yt-dlp/FFmpeg fixture tests, Telegram delivery error mapping tests, cache expiry/size-eviction tests, stale-job reconciliation tests, and extractor redirect/SSRF validation. Keep Premium pricing and allowance, rewarded-ad provider, and free ceilings blocked on owner decisions.
+Harden the extraction engine: split metadata and download timeouts, add extractor redirect/SSRF validation, add real yt-dlp fixture tests, and enforce tier-specific size/duration limits. Then continue with FFmpeg fixture tests, Telegram delivery error mapping, cache eviction, stale-job reconciliation and handler tests. Reward daily cap and credit expiry remain open; everything else is approved.
