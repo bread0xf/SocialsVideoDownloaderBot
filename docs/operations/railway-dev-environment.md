@@ -1,8 +1,25 @@
 # Railway Development Environment
 
-**Status:** Planned; not yet deployed. This runbook is the intended setup. Update the status and verification log after the first successful deployment.
+**Status:** Partially deployed 2026-11-09. The API is deployed and healthy; bot and worker await `TELEGRAM_BOT_TOKEN`, which the owner must set in Railway. This runbook is the setup and operations reference.
 
 **Purpose:** end-to-end Telegram testing and engine timing on reliable disk and bandwidth. This environment is **not production-ready** and does not choose the production host (D-12).
+
+## Deployed instance (2026-11-09)
+
+| Item | Value |
+|---|---|
+| Project | `respectful-warmth` (reused existing project; pre-existing single service repurposed as the API) |
+| Environment | `production` |
+| API service | `SocialsVideoDownloaderBot` |
+| API URL | `https://socialsvideodownloaderbot-production.up.railway.app` |
+| Bot / worker services | `bot`, `worker` |
+| Databases | `Postgres`, `Redis` (managed) |
+| Worker volume | `worker-volume`, mounted at `/app/storage`; currently 500 MB |
+| Cache cap | 200 MiB (`MEDIA_CACHE_MAX_BYTES=209715200`) to fit the 500 MB volume |
+
+Railway injects `PORT=8080`; the API honors it. The public domain must target port 8080. If you prefer port 8000, set `PORT=8000` on the API service and point the domain at 8000 instead.
+
+The volume is 500 MB because the current CLI has no resize command. Expand it in the Railway dashboard and raise `MEDIA_CACHE_MAX_BYTES` if more cache is needed.
 
 Railway was selected because it runs long-lived polling and worker processes, uses the project Dockerfile with ffmpeg/FFprobe/Deno, supports a persistent worker volume, and has no serverless duration limit. Vercel cannot run this topology.
 
@@ -80,7 +97,7 @@ If the CLI does not support this, create and attach the volume in the dashboard 
 | `TELEGRAM_BOT_TOKEN` | — | secret | secret |
 | `TELEGRAM_POLLING` | — | `true` | — |
 | `MEDIA_ROOT` | — | — | `/app/storage` |
-| `MEDIA_CACHE_MAX_BYTES` | — | — | `8589934592` (8 GiB) |
+| `MEDIA_CACHE_MAX_BYTES` | — | — | `209715200` (200 MiB on the 500 MB volume) |
 | `WORKER_CONCURRENCY` | — | — | `1` |
 | `RAILWAY_RUN_UID` | — | — | `0` |
 
@@ -103,8 +120,10 @@ railway deployment list --service api --json        # require SUCCESS
 railway up --service bot --detach -m "Railway bot initial deploy"
 railway up --service worker --detach -m "Railway worker initial deploy"
 railway deployment list --service worker --json     # require SUCCESS
-railway domain --service api --port 8000 --json
+railway domain --service api --port 8080 --json
 ```
+
+Railway injects `PORT=8080`; the domain must target the same port. `preDeployCommand` accepts the string form on CLI 5.71 and runs `alembic upgrade head` before the API starts.
 
 Do not report success until `railway deployment list` shows `SUCCESS` for each service.
 

@@ -47,7 +47,7 @@ A Railway development environment (API + bot + worker + managed Postgres/Redis) 
 | 2026-11-06 | Phase 1 free-tier slice | 89 passed |
 | 2026-11-06 | Extraction hardening | 142 passed, 5 skipped; live extraction passed for all four platforms |
 | 2026-11-09 | v0 bot | 168 passed, 17 skipped (Postgres unavailable locally); profile setup applied to the live bot |
-| 2026-11-09 | Docs consolidation and Railway readiness | To be recorded after the next quality-gate run |
+| 2026-11-09 | Docs consolidation and Railway readiness | Ruff and format passed; mypy passed (59 files); 183 passed, 5 skipped (live extraction gated); Docker image built successfully |
 
 Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` to an isolated database, or let the suite create a temporary database on the server in `DATABASE_URL`. When PostgreSQL is unavailable those tests skip rather than fail.
 
@@ -67,7 +67,7 @@ Live tests are gated by `SVDB_LIVE_EXTRACTION=1`; see `tests/integration/test_li
 | Environment | Status | Notes |
 |---|---|---|
 | Local Docker Compose | Implemented | Postgres, Redis, API, bot and worker; worker mounts the media volume |
-| Railway development | Planned | API + bot + worker + managed Postgres/Redis; runbook in `docs/operations/railway-dev-environment.md` |
+| Railway development | API live; bot/worker pending token | API healthy at `https://socialsvideodownloaderbot-production.up.railway.app` with Postgres and Redis ready; bot and worker await `TELEGRAM_BOT_TOKEN`. Runbook in `docs/operations/railway-dev-environment.md` |
 | Production | Not deployed | Hosting decision D-12 remains open; see `docs/project/unresolved-decisions.md` |
 
 ## Known gaps and next work
