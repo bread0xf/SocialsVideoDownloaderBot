@@ -8,6 +8,6 @@ def main() -> None:
     uvicorn.run(
         "backend.api.app:app",
         host="0.0.0.0",  # noqa: S104 - container must listen on all interfaces
-        port=8000,
+        port=settings.port,
         log_level=settings.log_level.lower(),
     )

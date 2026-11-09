@@ -79,3 +79,23 @@ def test_v0_daily_limit_falls_back_to_free_limit() -> None:
 
     assert default.v0_effective_daily_limit == 5
     assert override.v0_effective_daily_limit == 9
+
+
+def test_database_url_is_normalised_to_asyncpg() -> None:
+    for raw in ("postgres://u:p@h:5432/db", "postgresql://u:p@h:5432/db"):
+        settings = Settings(_env_file=None, app_env="test", database_url=raw)
+
+        assert settings.database_url == "postgresql+asyncpg://u:p@h:5432/db"
+
+
+def test_already_normalised_database_url_is_unchanged() -> None:
+    raw = "postgresql+asyncpg://u:p@h:5432/db?ssl=require"
+
+    assert Settings(_env_file=None, app_env="test", database_url=raw).database_url == raw
+
+
+def test_port_default_and_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PORT", raising=False)
+
+    assert Settings(_env_file=None, app_env="test").port == 8000
+    assert Settings(_env_file=None, app_env="test", port=9090).port == 9090

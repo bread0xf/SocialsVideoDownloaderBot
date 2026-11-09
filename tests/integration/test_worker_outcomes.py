@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from structlog.testing import capture_logs
 
 from backend.core.config import Settings
 from backend.core.errors import AppError, ErrorCode
@@ -292,17 +293,25 @@ async def test_cache_hit_rechecks_entitlement_before_reusing_media(
 
     monkeypatch.setattr(tasks, "probe_media", _fake_probe)
     delivery = _RecordingDelivery()
-    outcome = await tasks.process_download(
-        {
-            "settings": settings,
-            "session_factory": session_factory,
-            "delivery": delivery,
-            "adapter": None,
-        },
-        str(job_id),
-    )
+    with capture_logs() as logs:
+        outcome = await tasks.process_download(
+            {
+                "settings": settings,
+                "session_factory": session_factory,
+                "delivery": delivery,
+                "adapter": None,
+            },
+            str(job_id),
+        )
 
     assert outcome == "completed"
+    completed_logs = [entry for entry in logs if entry["event"] == "download_completed"]
+    assert len(completed_logs) == 1
+    assert completed_logs[0]["cache_hit"] is True
+    assert isinstance(completed_logs[0]["elapsed_ms"], int)
+    assert completed_logs[0]["output_bytes"] == len(free_content)
+    assert completed_logs[0]["resolution_p"] == 480
+    assert completed_logs[0]["platform"] == "youtube"
     assert len(delivery.videos) == 1
     delivered_media = delivery.videos[0][1]
     assert delivered_media.path == free_file

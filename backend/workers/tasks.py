@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -268,6 +269,8 @@ async def _handle_failure(
     ctx: dict[str, Any],
     snapshot: JobSnapshot,
     error: AppError,
+    *,
+    started: float | None = None,
 ) -> str:
     settings = _settings(ctx)
     now = datetime.now(UTC)
@@ -303,12 +306,15 @@ async def _handle_failure(
             await release_quota(session, job.id, now=now)
         await session.commit()
 
+    elapsed_ms = _elapsed_ms(started)
+
     if retry_scheduled:
         logger.info(
             "download_retry_scheduled",
             job_id=str(snapshot.job_id),
             error_code=error.code.value,
             attempt=snapshot.attempt_count,
+            elapsed_ms=elapsed_ms,
         )
         return "retry"
 
@@ -316,6 +322,7 @@ async def _handle_failure(
         "download_failed",
         job_id=str(snapshot.job_id),
         error_code=error.code.value,
+        elapsed_ms=elapsed_ms,
     )
     delivery = cast(Delivery | None, ctx.get("delivery"))
     if delivery is not None:
@@ -326,12 +333,41 @@ async def _handle_failure(
     return "failed"
 
 
+def _elapsed_ms(started: float | None) -> int | None:
+    if started is None:
+        return None
+    return int((time.monotonic() - started) * 1000)
+
+
+def _log_completed(
+    snapshot: JobSnapshot,
+    *,
+    started: float,
+    cache_hit: bool,
+    media: PreparedMedia,
+    platform: str,
+    outcome: str,
+) -> None:
+    logger.info(
+        "download_completed",
+        job_id=str(snapshot.job_id),
+        attempt=snapshot.attempt_count,
+        cache_hit=cache_hit,
+        elapsed_ms=_elapsed_ms(started),
+        output_bytes=media.probe.size_bytes,
+        resolution_p=media.probe.quality_height,
+        platform=platform,
+        outcome=outcome,
+    )
+
+
 async def process_download(ctx: dict[str, Any], job_id: str) -> str:
     settings = _settings(ctx)
     snapshot = await _claim_job(ctx, job_id)
     if snapshot is None:
         return "skipped"
 
+    started = time.monotonic()
     logger.info(
         "download_started",
         job_id=str(snapshot.job_id),
@@ -384,7 +420,16 @@ async def process_download(ctx: dict[str, Any], job_id: str) -> str:
                     cache_entry_id=cache_entry_id,
                     stored_cache_path=None,
                 )
-                return "completed" if finalized else "completed_unfinalized"
+                outcome = "completed" if finalized else "completed_unfinalized"
+                _log_completed(
+                    snapshot,
+                    started=started,
+                    cache_hit=True,
+                    media=media,
+                    platform=normalized_url.platform,
+                    outcome=outcome,
+                )
+                return outcome
 
         with job_workspace(settings.media_root, snapshot.job_id) as workspace:
             await resolve_public_addresses(normalized_url.host)
@@ -446,9 +491,18 @@ async def process_download(ctx: dict[str, Any], job_id: str) -> str:
                 cache_entry_id=None,
                 stored_cache_path=stored_cache_path,
             )
-            return "completed" if finalized else "completed_unfinalized"
+            outcome = "completed" if finalized else "completed_unfinalized"
+            _log_completed(
+                snapshot,
+                started=started,
+                cache_hit=False,
+                media=media,
+                platform=normalized_url.platform,
+                outcome=outcome,
+            )
+            return outcome
     except AppError as exc:
-        return await _handle_failure(ctx, snapshot, exc)
+        return await _handle_failure(ctx, snapshot, exc, started=started)
     except Exception:
         logger.exception("download_unexpected_failure", job_id=str(snapshot.job_id))
         return await _handle_failure(
@@ -458,6 +512,7 @@ async def process_download(ctx: dict[str, Any], job_id: str) -> str:
                 ErrorCode.INTERNAL_ERROR,
                 "The download could not be completed. Please try again later.",
             ),
+            started=started,
         )
 
 

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
     log_level: str = "INFO"
     log_json: bool = False
+    port: int = Field(default=8000, ge=1, le=65535)
 
     database_url: str = (
         "postgresql+asyncpg://postgres:postgres@localhost:5432/socialsvideodownloaderbot"
@@ -71,6 +72,14 @@ class Settings(BaseSettings):
         if level not in _LOG_LEVELS:
             raise ValueError(f"LOG_LEVEL must be one of {sorted(_LOG_LEVELS)}")
         return level
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalise_database_url(cls, value: str) -> str:
+        for scheme in ("postgres://", "postgresql://"):
+            if value.startswith(scheme):
+                return "postgresql+asyncpg://" + value.removeprefix(scheme)
+        return value
 
     @field_validator("quota_timezone")
     @classmethod
