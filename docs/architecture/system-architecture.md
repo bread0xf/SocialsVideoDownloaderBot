@@ -5,50 +5,53 @@
 ```mermaid
 flowchart LR
     U[Telegram User] --> TG[Telegram Bot API]
-    TG --> B[Bot Adapter]
-    B --> APP[Application Services]
-    APP --> DB[(PostgreSQL)]
-    APP --> OB[Transactional Outbox]
-    OB --> PUB[Outbox Publisher]
-    PUB --> R[(Redis / ARQ)]
-    R --> W[Worker]
-    W --> EXT[Platform Adapter]
-    EXT --> Y[yt-dlp]
-    W --> FF[FFmpeg]
-    W --> CACHE[(Media Cache)]
+    TG --> B[Bot process]
+    B --> DB[(PostgreSQL)]
+    B --> OB[Transactional outbox]
+    OB --> R[(Redis / ARQ)]
+    R --> W[Worker process]
+    W --> EXT[yt-dlp adapter]
+    EXT --> P[Platform]
+    W --> FF[FFmpeg / FFprobe]
+    W --> CACHE[(Media volume)]
     W --> TG
-    API[FastAPI] --> APP
-    SCH[Scheduler] --> DB
+    A[API process] --> DB
+    A --> R
+    CRON[ARQ cron in worker] --> DB
+    CRON --> R
 ```
 
 ## 2. Runtime processes
 
-- **Bot process:** Receives Telegram updates, validates transport input, invokes application use cases and sends user-facing status.
-- **API process:** Health/readiness endpoints and authenticated provider callbacks; avoid exposing arbitrary download endpoints.
-- **Worker process:** Claims jobs, extracts metadata, downloads/processes media, delivers to Telegram and records outcome.
-- **Scheduler process:** Resets/rolls up time-windowed counters if needed, expires cache, reconciles stale jobs/subscriptions and dispatches scheduled maintenance.
-- **Outbox publisher:** Publishes committed events to Redis/ARQ and marks them published safely.
+- **Bot** (`svdb-bot`, `apps/bot`): receives Telegram updates by long polling, validates URLs, creates idempotent jobs and reports status. It does not download or transcode.
+- **API** (`svdb-api`, `backend/api`): FastAPI health/readiness routes and `GET /api/v1/platforms`. No arbitrary URL-fetch endpoint.
+- **Worker** (`svdb-worker`, `backend/workers`): claims jobs from Redis/ARQ, extracts metadata, downloads and prepares media, delivers to Telegram, commits or releases quota, and stores cache entries. Its ARQ cron jobs run `dispatch_outbox`, `cleanup_cache` and `reconcile_stale_jobs`; there is no separate scheduler or outbox-publisher process.
+- **v0 bot** (`svdb-bot-v0`, `apps/bot_v0`): standalone development bot. It runs the engine in-process with in-memory quota and needs no PostgreSQL, Redis or worker. It is not a production ledger.
 
-These may be separate containers using the same image and codebase.
+One image runs all processes with different commands. Local Compose starts Postgres, Redis, API, bot and worker; the worker alone mounts the media volume.
 
-## 3. Logical modules
+## 3. Implemented modules
 
 ```text
-bot/             Telegram handlers and conversation adapters
-api/             FastAPI routes and provider callback adapters
-application/     Use cases, orchestration and transaction boundaries
-domain/          Entities, value objects and business policies
-platforms/       URL parsing, platform identification and adapters
-extraction/      yt-dlp integration and extractor configuration
-media/           Format selection, FFmpeg, workspaces and artifacts
-delivery/        Telegram delivery abstraction
-entitlements/    Plans, quota, reservations and policy evaluation
-billing/         Telegram Stars payment/subscription lifecycle
-rewards/         Reward-provider verification and credit ledger
-sponsors/        Bot-owned sponsor campaign placement
-cache/           Cache lookup, storage policy and eviction
-infrastructure/  Database, Redis, settings, logging and external clients
+apps/bot/              Telegram handlers, URL intake, status replies
+apps/bot_v0/           standalone bot, in-memory quota, branded UI
+backend/api/           FastAPI app, health and platform routes
+backend/core/          settings, structured logging, error codes, quota periods
+backend/database/      async engine, sessions, Redis client, ORM models
+backend/delivery/      Telegram delivery abstraction
+backend/downloads/     submission, idempotency, state machine, outbox, in-process engine
+backend/entitlements/  Free/Premium resolution through paid_through
+backend/media/         format selection, FFprobe validation, FFmpeg preparation
+backend/platforms/     URL normalization, DNS guard, registry, yt-dlp adapter
+backend/storage/       job workspaces, atomic cache-file storage
+backend/usage/         quota reservation, commit, release, ledger
+backend/users/         Telegram user upsert
+backend/workers/       ARQ settings, download task, outbox dispatch, cleanup, reconciliation
+migrations/            Alembic schema and seed data
+workbench/             development CLI for inspect/download without Telegram or DB
 ```
+
+Future modules proposed by the specification but absent today: `billing`, `rewards`, `sponsors`, rate limiting and a controlled egress proxy.
 
 ## 4. Job lifecycle
 
@@ -57,9 +60,7 @@ stateDiagram-v2
     [*] --> RECEIVED
     RECEIVED --> VALIDATING
     VALIDATING --> REJECTED
-    VALIDATING --> AUTHORIZING
-    AUTHORIZING --> REJECTED
-    AUTHORIZING --> QUEUED
+    VALIDATING --> QUEUED
     QUEUED --> EXTRACTING
     EXTRACTING --> SELECTING_FORMAT
     SELECTING_FORMAT --> PROCESSING
@@ -69,60 +70,52 @@ stateDiagram-v2
     SELECTING_FORMAT --> FAILED
     PROCESSING --> FAILED
     DELIVERING --> FAILED
-    QUEUED --> CANCELLED
+    QUEUED --> FAILED
     FAILED --> [*]
     REJECTED --> [*]
-    CANCELLED --> [*]
     COMPLETED --> [*]
 ```
 
-Persist transitions and timestamps. Include retry metadata and a terminal reason code.
+Transitions and timestamps are persisted on `download_jobs`; terminal failures carry a safe error code and release the quota reservation.
 
 ## 5. Transactional workflow
 
-1. Receive Telegram update and derive a stable update/idempotency key.
-2. Normalize and validate URL.
-3. In one PostgreSQL transaction: create/find user, evaluate entitlement, reserve quota, create job and create outbox event.
-4. Commit transaction.
-5. Publisher sends outbox event to Redis/ARQ.
-6. Worker claims job idempotently and obtains a bounded workspace.
-7. Adapter inspects source and downloads allowed format.
-8. FFmpeg processes only when necessary.
-9. Worker delivers media to Telegram.
-10. Persist Telegram delivery reference, commit quota and mark job complete.
-11. On terminal failure, release/reconcile reservation and clean workspace.
+1. Receive a Telegram update and derive a stable idempotency key.
+2. Normalize and validate the URL against the platform allowlist and DNS guard.
+3. In one PostgreSQL transaction: upsert the user, resolve entitlement, reserve quota, create the job and create the outbox event.
+4. Commit, then the ARQ cron dispatches the outbox event to the queue.
+5. A worker claims the job idempotently and creates a bounded workspace.
+6. The adapter inspects the source, checks duration and live status, and selects a format.
+7. The adapter downloads; FFmpeg remuxes or transcodes only when needed.
+8. The worker validates the output with FFprobe, delivers it through Telegram, stores a cache entry and finalizes the job.
+9. Delivery commits quota. Terminal failure releases the reservation and deletes the workspace.
 
 ## 6. Failure and retry behavior
 
-- Retry transient network and Telegram errors with bounded exponential backoff and jitter.
-- Do not retry permanent unsupported/private/restricted content errors.
-- Use a maximum attempt count and job deadline.
-- Ensure worker crashes can be recovered by a stale-job reaper.
-- A worker must be safe to run the same job more than once.
-- Handle ambiguous delivery results with a reconciliation state rather than blindly resending and double-counting.
-- Do not let retries extend resource consumption indefinitely.
+- Transient network and Telegram errors retry with bounded backoff; permanent errors do not.
+- `DOWNLOAD_MAX_ATTEMPTS` and the job deadline bound retries.
+- Workers are safe to run the same job more than once; job claiming and quota transitions are idempotent.
+- A stale-job reconciliation cron fails jobs whose deadline passed.
+- Ambiguous delivery outcomes are reconciled rather than blindly re-sent.
+- Extractor failures are classified per platform and surfaced as safe user messages.
 
 ## 7. Cache
 
-Cache key inputs:
-- Normalized source identity.
-- Output profile/maximum height.
-- Codec/container processing profile.
-- Processing pipeline version.
+Cache key inputs: normalized source identity, output profile/maximum height, processing version.
 
-Cache policy:
-- Hard maximum retention of 24 hours from creation (locked).
-- Maximum total bytes and per-artifact size.
-- LRU or equivalent bounded eviction.
-- Integrity/metadata checks before reuse.
-- Entitlement recheck on every delivery.
-- Store source metadata minimally.
-- Keep temporary job workspaces separate from durable cache.
+Policy:
 
-## 8. API boundaries
+- Hard maximum retention of 24 hours from creation.
+- Total bytes bounded by `MEDIA_CACHE_MAX_BYTES`.
+- Expiry and size-based eviction run from the worker cron.
+- Cache files are written atomically and validated with FFprobe before reuse.
+- Entitlement is rechecked before every cache delivery; a cache hit never bypasses quota.
+- Workspaces are temporary and separate from durable cache files.
 
-- Provider callbacks must authenticate and validate timestamp/replay windows.
-- Health endpoints expose only operational status.
-- No public arbitrary URL fetch endpoint.
-- Internal endpoints require authentication/network restriction.
-- Telegram webhook mode, if used, must validate Telegram's configured webhook secret token.
+## 8. API and transport boundaries
+
+- Telegram transport is long polling only; webhook mode is not implemented (D-13 open).
+- Health routes expose operational status only; `/health/ready` checks Postgres and Redis.
+- The API is the only publicly reachable service in the hosted dev environment.
+- No public arbitrary-URL fetch endpoint exists.
+- Provider callbacks and webhook secrets will require authentication and replay protection when those integrations are added.

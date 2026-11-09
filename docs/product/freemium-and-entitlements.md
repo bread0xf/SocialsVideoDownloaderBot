@@ -2,6 +2,8 @@
 
 **Status:** Core policy direction agreed. Free allowance, free quality ceiling, quota timezone and media retention are locked by `backend_specs/`. Premium pricing and allowance were approved on 2026-11-06. Reward provider mechanics remain partially open.
 
+**Implementation:** Plan resolution, quota reservation/commit/release, the append-only ledger, cache entitlement recheck and the 5/day Free and 20/day Premium allowances are implemented. Telegram Stars billing, rewarded credits and sponsor placements are **not implemented**. Tier-specific size and duration enforcement is still pending.
+
 > `backend_specs/` is the implementation baseline. Where this document conflicts with it, the specification pack wins.
 
 ## 1. Plans

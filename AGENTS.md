@@ -8,7 +8,7 @@ Build the project described in the product, architecture, security and engineeri
 
 Before changing code, read:
 
-0. `backend_specs/` — the approved implementation baseline. Where it conflicts with `docs/`, `backend_specs/` wins. Do not guess items listed in `backend_specs/docs/09-open-decisions.md`.
+0. `backend_specs/` — the frozen approved implementation baseline. Where it conflicts with `docs/`, `backend_specs/` wins. Do not edit it without owner approval as an erratum. Do not guess items listed in `backend_specs/docs/09-open-decisions.md`.
 1. `README.md`
 2. `docs/product/product-requirements.md`
 3. `docs/product/platform-support.md`
@@ -20,6 +20,8 @@ Before changing code, read:
 9. `docs/engineering/development-standards.md`
 10. `docs/operations/deployment-and-operations.md`
 11. `docs/project/unresolved-decisions.md`
+12. `docs/implementation-status.md` — the only tracker of what is actually implemented. Update it when behavior or test coverage changes; do not create parallel status documents.
+13. `docs/operations/railway-dev-environment.md` — when deployment or hosted-environment work is in scope.
 
 ## Non-negotiable constraints
 

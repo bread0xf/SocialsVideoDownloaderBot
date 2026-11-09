@@ -13,7 +13,7 @@ A Telegram bot for downloading publicly accessible videos from supported social 
 - **Rewarded allowance:** 1 additional download per verified ad event, delivered as a bot-managed chat ad (daily cap and expiry pending)
 - **Free quality:** 480p ceiling (locked)
 - **Premium quality:** Best supported source quality, up to 4K where source, processing, Telegram and deployment limits allow
-- **Architecture:** Python modular monolith, deployed as separate bot/API/worker/scheduler processes from one codebase
+- **Architecture:** Python modular monolith, deployed as separate bot/API/worker processes from one codebase; ARQ cron inside the worker handles outbox dispatch and maintenance
 
 ## Locked stack
 
@@ -43,7 +43,8 @@ Python, `python-telegram-bot`, FastAPI, yt-dlp behind a replaceable extraction i
 │   └── workers/            # ARQ worker and tasks
 ├── migrations/             # Alembic
 ├── tests/                  # Unit/integration tests
-└── docs/                   # Older split spec (kept for reference)
+├── workbench/              # Development CLI (inspect/download without Telegram or DB)
+└── docs/                   # Living docs: status, architecture, operations, decisions
 ```
 
 ## Current status
@@ -52,11 +53,11 @@ Phase 0 skeleton and the Phase 1 free-tier download slice are implemented: URL v
 
 Extraction has been live-verified for public YouTube, TikTok, Instagram and Facebook videos, including portrait video handling and downscaling to the plan ceiling.
 
-Remaining hardening work is tracked in `docs/implementation-status.md`: real extractor/media fixture tests, live Telegram delivery tests, cache-cleanup and stale-job tests, and extractor redirect/SSRF validation. Premium pricing and allowance are approved; billing, rewarded ads and sponsor features are not implemented yet.
+The standalone v0 bot (`apps/bot_v0`) is implemented for development and demos: branded HTML cards, inline buttons and in-process downloads with in-memory quota. It is not a production ledger.
 
-For a temporary implementation handoff, see `docs/agent-handoff.md`.
+Remaining hardening work is tracked in `docs/implementation-status.md`: live Telegram delivery tests, cache-cleanup and stale-job tests, handler tests, tier-specific size/duration limits, and controlled egress for full DNS-rebinding protection. Premium pricing and allowance are approved; billing, rewarded ads and sponsor features are not implemented yet.
 
-`backend_specs/` is the implementation baseline; where `docs/` conflicts with it, `backend_specs/` wins.
+`backend_specs/` is the frozen implementation baseline; where `docs/` conflicts with it, `backend_specs/` wins. `docs/` describes implemented behavior and living operational guidance.
 
 ## Getting started
 
@@ -102,6 +103,10 @@ That sets the bot name, short description, description, command menu and profile
 from [branding.py](apps/bot_v0/branding.py) and [logo.png](apps/bot_v0/assets/logo.png).
 Change those two files to rebrand.
 
+### Hosted development (Railway)
+
+The full stack (API, bot, worker, managed Postgres and Redis) can run on Railway from the same image. The setup, environment variables, volume and verification steps are in [docs/operations/railway-dev-environment.md](docs/operations/railway-dev-environment.md). The Railway environment is for development and engine timing only; it is not production-ready.
+
 Run quality gates:
 
 ```bash
@@ -124,3 +129,5 @@ The bot must only process content that is publicly accessible through supported 
 ## Document status
 
 `backend_specs/` defines the locked MVP baseline. Values marked **OPEN** or **VERIFY** in `backend_specs/docs/09-open-decisions.md` still require owner confirmation. Do not silently convert them into settled product requirements.
+
+`docs/` is the living documentation set. `docs/implementation-status.md` is the only status tracker; see [INDEX.md](INDEX.md) for the document map and layering rules.

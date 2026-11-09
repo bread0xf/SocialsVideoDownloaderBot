@@ -1,120 +1,104 @@
 # Database Design
 
-PostgreSQL is the durable source of truth. This is a logical schema proposal; agents should convert it into normalized SQLAlchemy models and Alembic migrations.
+PostgreSQL is the durable source of truth. This document describes the **implemented** schema. `backend/database/models.py` and the initial Alembic migration are authoritative; `backend_specs/docs/02-database-specification.md` remains the frozen target specification.
 
-## Core tables
+## Implemented tables
 
 ### `users`
 - `id` UUID primary key
-- `telegram_user_id` BIGINT unique, indexed
-- `created_at`, `updated_at`
-- `status` (active/limited/blocked)
-- Minimal profile fields only when required
+- `telegram_user_id` BIGINT, unique and indexed
+- `username`, `first_name`, `last_name`, `language_code` (nullable text)
+- `is_blocked` boolean, default false
+- `created_at`, `updated_at`, `last_seen_at`
 
 ### `plans`
-- `id`, `code` unique, `name`
-- `daily_download_limit`
-- `max_height`
-- `processing_priority`
-- `sponsor_free`
-- `reward_eligible`
-- `active`
+- `id` UUID primary key
+- `code` varchar(32), unique
+- `name`, `max_resolution_p`, `daily_included_downloads` (nullable), `priority`
+- `is_active`, `created_at`, `updated_at`
+- Check: `max_resolution_p > 0`
+- Seeded rows: `free`, `premium`
 
 ### `subscriptions`
-- `id`, `user_id`, `plan_id`
-- `status` (pending/active/past_due/cancelled/expired/refunded)
-- `provider`, `provider_subscription_ref`
-- `started_at`, `current_period_start`, `current_period_end`, `cancelled_at`
-- Unique provider reference where applicable
-
-### `payments`
-- `id`, `user_id`, `subscription_id`
-- `provider`, `provider_payment_ref` unique
-- `amount`, `currency`, `status`
-- `raw_payload_redacted` or safely retained provider reference; avoid unnecessary raw payload retention
-- `received_at`, `verified_at`
+- `id` UUID primary key
+- `user_id` → `users.id` (RESTRICT), `plan_id` → `plans.id` (RESTRICT)
+- `provider` varchar(64), `provider_subscription_ref` text, `status` varchar(32)
+- `started_at`, `paid_through`, `cancelled_at`, `created_at`, `updated_at`
+- Index: `(user_id, status, paid_through)`
+- Entitlement uses `paid_through`; an expired subscription falls back to the Free plan.
 
 ### `download_jobs`
-- `id` UUID
-- `user_id`, `chat_id`
-- `platform`, `normalized_source_id`
-- `status`, `requested_at`, `started_at`, `completed_at`
-- `attempt_count`, `max_attempts`, `deadline_at`
-- `output_profile`, `failure_code`, `failure_detail_safe`
-- `idempotency_key` unique
-- `telegram_file_id`, `telegram_message_id` nullable
+- `id` UUID primary key
+- `user_id` → `users.id` (RESTRICT)
+- `platform` varchar(32), `submitted_url`, `canonical_url`, `media_key`
+- `status` varchar(32), `stage` varchar(32) nullable
+- `requested_at`, `started_at`, `completed_at`, `failed_at`
+- `attempt_count` (≥ 0), `idempotency_key`, `error_code`, `error_detail_safe`
+- `selected_resolution_p`, `output_bytes`
+- `cache_entry_id` → `media_cache.id` (SET NULL)
+- Unique partial index: `(user_id, idempotency_key)` where `idempotency_key IS NOT NULL`
+- Indexes: `(status, requested_at)`, `(user_id, requested_at)`
+
+### `usage_reservations`
+- `id` UUID primary key
+- `user_id` → `users.id` (RESTRICT)
+- `download_job_id` → `download_jobs.id` (RESTRICT), unique
+- `quota_period_start`, `source` varchar(32), `status` varchar(32)
+- `reserved_at`, `committed_at`, `released_at`, `created_at`
+- Index: `(user_id, quota_period_start, status)`
+- One reservation per job; commit only after successful delivery, release on terminal failure.
 
 ### `usage_ledger`
-- `id`, `user_id`, `job_id`
-- `entry_type` (reservation/commit/release/adjustment)
-- `quantity` integer
-- `quota_window_start`, `quota_window_end`
-- `idempotency_key` unique
-- `created_at`
-
-### `reward_sessions`
-- `id`, `user_id`, `provider`
-- `provider_session_ref` unique
-- `status`, `created_at`, `expires_at`, `verified_at`
-
-### `reward_transactions`
-- `id`, `user_id`, `reward_session_id`
-- `provider_event_ref` unique
-- `credit_quantity`, `status`, `expires_at`, `created_at`
-
-### `sponsor_campaigns`
-- `id`, `name`, `status`
-- `starts_at`, `ends_at`
-- `placement`, `targeting_config`
-- `created_at`
-
-### `ad_impressions`
-- `id`, `campaign_id`, `user_id`
-- `placement`, `impression_ref`, `created_at`
-- Avoid storing more user data than needed for campaign reporting.
+- `id` UUID primary key
+- `user_id` → `users.id` (RESTRICT), `download_job_id` → `download_jobs.id` (RESTRICT, nullable)
+- `entry_type` varchar(32), `source` varchar(32), `quantity` integer
+- `quota_period_start` nullable, `idempotency_key` text unique, `created_at`
+- Indexes: `(user_id, quota_period_start, source)`, `(user_id, created_at)`
+- Append-only audit trail for reservations, commits and releases.
 
 ### `media_cache`
-- `id`, `cache_key` unique
-- `platform`, `normalized_source_id`
-- `output_profile`, `pipeline_version`
-- `storage_key`, `size_bytes`, `content_hash`
-- `telegram_file_id` nullable
-- `created_at`, `last_accessed_at`, `expires_at`
+- `id` UUID primary key
+- `media_key` text unique
+- `platform` varchar(32), `source_identity_hash`, `output_profile`, `processing_version`
+- `storage_path`, `file_size_bytes` (≥ 0), `mime_type`, `telegram_file_id`
+- `created_at`, `expires_at`, `last_accessed_at`, `status`
+- Index: `(expires_at, status)`
 
 ### `outbox_events`
-- `id` UUID
-- `aggregate_type`, `aggregate_id`
-- `event_type`, `payload`
-- `created_at`, `published_at`, `attempt_count`
-- Index unpublished events by `created_at`.
+- `id` UUID primary key
+- `event_type` varchar(64), `aggregate_type` varchar(64), `aggregate_id` UUID
+- `payload` JSONB
+- `created_at`, `available_at`, `published_at`, `attempt_count`, `last_error_code`
+- Index: `(published_at, available_at)`
+- Written in the same transaction as the job; the ARQ worker dispatches unpublished rows.
 
-## Constraints and indexes
-
-- Unique `telegram_user_id`.
-- Unique job `idempotency_key`.
-- Unique provider payment and reward event references.
-- Unique ledger idempotency key.
-- Index jobs by status/requested_at and user_id/requested_at.
-- Index ledger by user_id/quota_window_start.
-- Index subscriptions by user_id/status/current_period_end.
-- Index cache by expires_at and last_accessed_at.
-- Use foreign keys and explicit deletion/retention policies.
-- Use database transactions and row-level locking or atomic conditional updates for quota reservations.
+### `platform_registry`
+- `id` UUID primary key
+- `platform_key` varchar(32) unique, `display_name`, `status` varchar(32)
+- `supported_content_types` JSONB array
+- `last_verified_at`, `created_at`, `updated_at`
+- Seeded rows: `tiktok`, `instagram`, `youtube`, `facebook`
 
 ## Quota accounting
 
-Do not derive quota from a mutable counter alone. Use an append-only ledger with idempotent entries. A transaction should ensure:
-1. The user has enough remaining allowance in the active quota window.
-2. A reservation is inserted once for the job.
-3. Concurrent requests cannot overspend.
-4. Commit/release transitions are applied once.
+Quota is derived from the append-only ledger under a per-user PostgreSQL advisory lock, not from a mutable counter. Within one transaction the service:
 
-Define whether reward credits are separate from base plan quota or represented as a distinct credit bucket. This remains an implementation decision to document and test.
+1. Locks the user's quota scope.
+2. Counts committed and reserved entries for the active `Africa/Lagos` quota period.
+3. Inserts a reservation once per job.
+4. Rejects the request if the allowance is exhausted, preventing concurrent overspend.
+5. Commits the reservation after confirmed delivery or releases it on terminal failure.
+
+Idempotency keys make repeated update, payment and reward handling safe; see `backend/usage/service.py` and `backend/downloads/service.py`.
+
+## Future target, not implemented
+
+The frozen specification also proposes billing and monetization tables that have no models or migrations today: `payments`, `reward_sessions`, `reward_transactions`, `sponsor_campaigns`, `ad_impressions`. Do not assume they exist. Add migrations together with the corresponding feature and tests.
 
 ## Data lifecycle
 
-- Define retention for completed jobs, payment records, reward events, cache metadata and logs.
-- Keep billing/audit records for the legally required period.
-- Delete expired media artifacts and associated metadata according to policy.
-- Provide a user-data deletion workflow where legally and operationally appropriate, while preserving legally required billing records.
-- Avoid storing original full URLs unless necessary; redact sensitive query parameters.
+- Media cache expires after 24 hours from creation (locked maximum) and is also bounded by `MEDIA_CACHE_MAX_BYTES`.
+- Job workspaces are temporary and deleted after processing.
+- Full source URLs are stored on the job for support and debugging; do not add them to logs.
+- Retention for completed jobs, billing records and logs must be defined before production launch.
+- A user-data deletion workflow is required before production; see `docs/architecture/security-architecture.md`.

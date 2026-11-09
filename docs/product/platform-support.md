@@ -4,12 +4,16 @@
 
 | Platform | MVP status | Accepted content | Explicit exclusions |
 |---|---|---|---|
-| TikTok | Planned | Public video URL | Private/restricted videos, login-required content |
-| Instagram | Planned | Public Reel/video URL | Private accounts, Stories requiring authentication, login-required content |
-| YouTube | Planned | Public individual video URL | Playlists, channels, live streams, age/restriction bypass |
-| Facebook | Planned | Public individual video URL | Private/group-restricted content, login-required content |
+| TikTok | Live-verified 2026-11-06 | Public video URL | Private/restricted videos, login-required content |
+| Instagram | Live-verified 2026-11-06 | Public Reel/video URL | Private accounts, Stories requiring authentication, login-required content |
+| YouTube | Live-verified 2026-11-06 | Public individual video URL | Playlists, channels, live streams, age/restriction bypass |
+| Facebook | Live-verified 2026-11-06 | Public individual video URL | Private/group-restricted content, login-required content |
+
+Live metadata, download and FFmpeg preparation passed for one public sample per platform. YouTube requires `yt-dlp-ejs` with a Deno 2.3+ runtime. Some older Facebook URLs fail in yt-dlp with `Cannot parse data`; that is an extractor limitation, not a URL-normalization issue. Platform availability can change without notice.
 
 ## URL handling
+
+**Implemented:** exact host/path validation, canonicalization, tracking-query stripping, IP/localhost/credential/port rejection, DNS global-address checks at ingestion, and validation of the final extracted URL against the platform allowlist. **Pending:** controlled egress or a network policy for full DNS-rebinding protection.
 
 - Require `https` by default. If `http` is accepted for a platform redirect, upgrade safely and validate the destination.
 - Parse and normalize hostnames; reject lookalike domains and unexpected ports.

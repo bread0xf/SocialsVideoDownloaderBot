@@ -1,6 +1,6 @@
 # Product Requirements — SocialsVideoDownloaderBot
 
-**Status:** MVP specification; several commercial and operational values remain open.
+**Status:** MVP specification. Implemented scope and gaps are tracked in `docs/implementation-status.md`; commercial and operational values still open are in `docs/project/unresolved-decisions.md`.
 
 ## 1. Product overview
 
