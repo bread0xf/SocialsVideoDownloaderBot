@@ -1,6 +1,6 @@
 # Railway Development Environment
 
-**Status:** Partially deployed 2026-11-09. The API is deployed and healthy; bot and worker await `TELEGRAM_BOT_TOKEN`, which the owner must set in Railway. This runbook is the setup and operations reference.
+**Status:** Partially deployed 2026-11-09. The API and worker are running; the worker cron dispatches the outbox against the migrated schema. The bot awaits `TELEGRAM_BOT_TOKEN`, which the owner must set in Railway, and shows `CRASHED` until then. This runbook is the setup and operations reference.
 
 **Purpose:** end-to-end Telegram testing and engine timing on reliable disk and bandwidth. This environment is **not production-ready** and does not choose the production host (D-12).
 

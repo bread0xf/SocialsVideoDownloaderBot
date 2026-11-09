@@ -67,7 +67,7 @@ Live tests are gated by `SVDB_LIVE_EXTRACTION=1`; see `tests/integration/test_li
 | Environment | Status | Notes |
 |---|---|---|
 | Local Docker Compose | Implemented | Postgres, Redis, API, bot and worker; worker mounts the media volume |
-| Railway development | API live; bot/worker pending token | API healthy at `https://socialsvideodownloaderbot-production.up.railway.app` with Postgres and Redis ready; bot and worker await `TELEGRAM_BOT_TOKEN`. Runbook in `docs/operations/railway-dev-environment.md` |
+| Railway development | API and worker live; bot pending token | API healthy at `https://socialsvideodownloaderbot-production.up.railway.app`; migrations applied; worker cron dispatching the outbox with no schema errors. Bot awaits `TELEGRAM_BOT_TOKEN`. Runbook in `docs/operations/railway-dev-environment.md` |
 | Production | Not deployed | Hosting decision D-12 remains open; see `docs/project/unresolved-decisions.md` |
 
 ## Known gaps and next work
