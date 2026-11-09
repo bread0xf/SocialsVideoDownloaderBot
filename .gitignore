@@ -25,5 +25,8 @@ htmlcov/
 media_cache/
 workspaces/
 
+# Workbench downloads
+workbench/downloads/
+
 # OS
 .DS_Store
