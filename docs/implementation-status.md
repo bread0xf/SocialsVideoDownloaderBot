@@ -9,6 +9,7 @@
 | Docker Compose + health checks | Complete | `compose.yaml`, `Dockerfile`, `backend/api/app.py`, `backend/api/routes/health.py` | `tests/unit/test_health.py` | `/health/live` tested; `/health/ready` needs live DB/Redis |
 | Alembic schema | Complete | `alembic.ini`, `migrations/env.py`, `migrations/versions/71cd52ac280f_initial_schema.py` | Integration fixtures create the current metadata | Initial schema plus seeded free/premium plans and MVP platform registry |
 | Telegram `/start`, `/help`, `/status` | Partial | `apps/bot/main.py` | — | Handlers implemented; handler tests still pending |
+| v0 standalone bot | Complete (development) | `apps/bot_v0/`, `backend/downloads/engine.py` | `tests/unit/test_bot_v0_handlers.py`, `test_bot_v0_state.py`, `test_bot_v0_messages.py`, `test_bot_v0_setup.py`, `test_inprocess_engine.py` | Single process, no PostgreSQL/Redis/worker; in-memory quota; free limits only; branded profile via `svdb-bot-v0-setup`; HTML cards, inline buttons and stage progress; not a production ledger |
 | URL validation/platform registry | Complete | `backend/platforms/urls.py`, `backend/platforms/registry.py` | `tests/unit/test_urls.py`, `tests/unit/test_registry.py` | Canonicalization, port/credential/IP/localhost blocking, DNS-global-address guard |
 | Persistent download jobs | Complete | `backend/database/models.py`, `backend/downloads/service.py` | `tests/integration/test_download_submission.py` | Idempotent submission, active-job limit, outbox event |
 | Atomic quota reservation | Complete | `backend/usage/service.py` | `tests/integration/test_usage_quota.py` | Advisory lock, reserve/commit/release, append-only ledger entries |
@@ -70,6 +71,19 @@ Live extraction smoke (metadata, download, FFmpeg preparation) passed for YouTub
 | TikTok | Pass | Pass | Portrait 540p downscaled to 480p |
 | Instagram | Pass | Pass | Silent reel path exercised |
 | Facebook | Pass | Pass | Older sample URLs may hit yt-dlp extractor limits |
+
+## v0 bot gate results (2026-11-09)
+
+- `uv run ruff check .` — passed
+- `uv run ruff format --check .` — passed
+- `uv run mypy backend apps` — passed (59 files)
+- `uv run pytest -q` — 168 passed, 17 skipped (PostgreSQL unavailable locally; live extraction gated)
+- Application build smoke test with a dummy token — handlers and engine wired
+- `uv run svdb-bot-v0-setup` — bot name, descriptions, command menu and profile photo applied
+- Profile verified through `getMyName`, `getMyShortDescription` and `getMyCommands`
+
+The v0 bot was not exercised against the live Bot API for media delivery. It has no durable
+usage ledger and must not be treated as production-ready.
 
 ## Next task
 

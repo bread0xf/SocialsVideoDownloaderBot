@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     telegram_polling: bool = True
     telegram_webhook_secret: SecretStr | None = None
 
+    # Standalone v0 bot: no PostgreSQL, Redis or worker. Not a production ledger.
+    telegram_v0_bot_token: SecretStr = SecretStr("")
+    v0_allowed_user_ids: str = ""
+    v0_media_root: Path = Path("./storage/v0")
+    v0_daily_limit: int | None = Field(default=None, ge=1)
+    v0_max_active_jobs_per_user: int = Field(default=1, ge=1)
+
     quota_timezone: str = "Africa/Lagos"
     free_daily_limit: int = Field(default=5, ge=1)
     free_max_resolution_p: int = Field(default=480, ge=1)
@@ -83,6 +90,29 @@ class Settings(BaseSettings):
     @property
     def telegram_token(self) -> str:
         return self.telegram_bot_token.get_secret_value()
+
+    @property
+    def telegram_v0_token(self) -> str:
+        return self.telegram_v0_bot_token.get_secret_value() or self.telegram_token
+
+    @property
+    def v0_allowed_user_id_set(self) -> frozenset[int]:
+        ids: set[int] = set()
+        for raw in self.v0_allowed_user_ids.split(","):
+            value = raw.strip()
+            if not value:
+                continue
+            try:
+                ids.add(int(value))
+            except ValueError as exc:
+                raise ValueError(
+                    f"V0_ALLOWED_USER_IDS contains a non-numeric value: {value!r}"
+                ) from exc
+        return frozenset(ids)
+
+    @property
+    def v0_effective_daily_limit(self) -> int:
+        return self.v0_daily_limit or self.free_daily_limit
 
 
 @lru_cache

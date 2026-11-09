@@ -44,3 +44,38 @@ def test_production_requires_telegram_token(monkeypatch: pytest.MonkeyPatch) -> 
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None, app_env="production", telegram_bot_token="")
+
+
+def test_v0_token_falls_back_to_primary_token() -> None:
+    shared = Settings(_env_file=None, app_env="test", telegram_bot_token="primary")
+    dedicated = Settings(
+        _env_file=None,
+        app_env="test",
+        telegram_bot_token="primary",
+        telegram_v0_bot_token="v0-token",
+    )
+
+    assert shared.telegram_v0_token == "primary"
+    assert dedicated.telegram_v0_token == "v0-token"
+
+
+def test_v0_allow_list_parsing() -> None:
+    settings = Settings(_env_file=None, app_env="test", v0_allowed_user_ids=" 1, 2,,3 ")
+
+    assert settings.v0_allowed_user_id_set == frozenset({1, 2, 3})
+    assert Settings(_env_file=None, app_env="test").v0_allowed_user_id_set == frozenset()
+
+
+def test_v0_allow_list_rejects_non_numeric_values() -> None:
+    settings = Settings(_env_file=None, app_env="test", v0_allowed_user_ids="1,abc")
+
+    with pytest.raises(ValueError):
+        _ = settings.v0_allowed_user_id_set
+
+
+def test_v0_daily_limit_falls_back_to_free_limit() -> None:
+    default = Settings(_env_file=None, app_env="test")
+    override = Settings(_env_file=None, app_env="test", v0_daily_limit=9)
+
+    assert default.v0_effective_daily_limit == 5
+    assert override.v0_effective_daily_limit == 9

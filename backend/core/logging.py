@@ -13,6 +13,9 @@ def configure_logging(level: str = "INFO", json_logs: bool = False) -> None:
         level=logging_level,
         force=True,
     )
+    # httpx logs full request URLs at INFO, and Bot API URLs embed the bot token.
+    for noisy_logger in ("httpx", "httpcore"):
+        logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
     processors: list[Any] = [
         structlog.contextvars.merge_contextvars,

@@ -27,6 +27,8 @@ dependencies = [
 
 [project.scripts]
 svdb-bot = "apps.bot.main:main"
+svdb-bot-v0 = "apps.bot_v0.app:main"
+svdb-bot-v0-setup = "apps.bot_v0.setup:main"
 svdb-api = "backend.api.main:main"
 svdb-worker = "backend.workers.main:main"
 

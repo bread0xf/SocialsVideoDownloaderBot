@@ -33,7 +33,14 @@ class _RecordingDelivery:
         self.videos: list[tuple[int, PreparedMedia]] = []
         self.texts: list[tuple[int, str]] = []
 
-    async def send_video(self, chat_id: int, media: PreparedMedia) -> DeliveredMedia:
+    async def send_video(
+        self,
+        chat_id: int,
+        media: PreparedMedia,
+        *,
+        caption: str | None = None,
+        parse_mode: str | None = None,
+    ) -> DeliveredMedia:
         self.videos.append((chat_id, media))
         return DeliveredMedia(message_id=1, file_id="cached-file-id")
 

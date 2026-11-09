@@ -27,7 +27,8 @@ Python, `python-telegram-bot`, FastAPI, yt-dlp behind a replaceable extraction i
 ├── README.md
 ├── backend_specs/          # Approved implementation baseline
 ├── apps/
-│   └── bot/                # Telegram adapter
+│   ├── bot/                # Telegram adapter
+│   └── bot_v0/             # Standalone v0 bot (no DB/Redis/worker)
 ├── backend/
 │   ├── api/                # FastAPI and health/platform endpoints
 │   ├── core/               # Settings, logging, quota and error types
@@ -72,6 +73,34 @@ uv run svdb-api       # http://localhost:8000/health/live
 uv run svdb-bot       # Telegram polling
 uv run svdb-worker    # ARQ worker
 ```
+
+### v0 bot (standalone)
+
+`svdb-bot-v0` is a single-process bot wired directly to the extraction engine. It does
+not need PostgreSQL, Redis or the worker; it validates URLs, downloads and prepares the
+video in-process, then delivers it. Usage is held in memory and resets on restart, so
+this bot is for development and demos, not production.
+
+```bash
+# Use TELEGRAM_V0_BOT_TOKEN, or fall back to TELEGRAM_BOT_TOKEN
+uv run svdb-bot-v0
+```
+
+Optional: set `V0_ALLOWED_USER_IDS` to a comma-separated allow list, and
+`V0_DAILY_LIMIT` to override the free daily limit. It uses the same free ceilings as the
+worker: 480p, 48 MiB and 10 minutes by default.
+
+The chat experience uses branded HTML cards, inline buttons (`/start`, `/help`, `/status`,
+supported links) and live stage updates while a download runs. Apply the bot profile once
+with:
+
+```bash
+uv run svdb-bot-v0-setup
+```
+
+That sets the bot name, short description, description, command menu and profile photo
+from [branding.py](apps/bot_v0/branding.py) and [logo.png](apps/bot_v0/assets/logo.png).
+Change those two files to rebrand.
 
 Run quality gates:
 
