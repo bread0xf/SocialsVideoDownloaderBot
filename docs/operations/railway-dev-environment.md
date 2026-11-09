@@ -149,7 +149,8 @@ Do not report success until `railway deployment list` shows `SUCCESS` for each s
 
 1. `railway logs --service api --lines 200 --json` — Alembic upgraded and the app started.
 2. `curl -fsS https://<api-domain>/health/live` — 200.
-3. `curl -fsS https://<api-domain>/health/ready` — 200 (PostgreSQL and Redis reachable).
+3. `curl -fsS https://<api-domain>/health/ready` — 200 (PostgreSQL and Redis reachable). Readiness checks connectivity only, not schema; confirm migrations from the pre-deploy log or by checking that the worker logs `outbox_dispatched` instead of `UndefinedTableError`.
+4. Without `TELEGRAM_BOT_TOKEN`, `svdb-bot` exits at startup and the `bot` service shows `CRASHED`. Set the variable and redeploy.
 4. `railway logs --service bot --lines 100 --json` — polling started; no `Conflict`.
 5. `railway logs --service worker --lines 100 --json` — ARQ started; `outbox_dispatched` events.
 6. Send a public video URL to the bot; confirm Telegram delivery and a worker `download_completed` event with `elapsed_ms`.
