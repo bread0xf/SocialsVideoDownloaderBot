@@ -58,33 +58,51 @@ Confirm the exact `Postgres` and `Redis` service names; variable references are 
 
 ## Configure each app service
 
-```bash
-railway environment edit --service-config <svc> source.repo https://github.com/bread0xf/SocialsVideoDownloaderBot.git
-railway environment edit --service-config <svc> source.branch dev
-railway environment edit --service-config <svc> build.builder DOCKERFILE
-railway environment edit --service-config <svc> build.watchPatterns '["backend/**","apps/**","migrations/**","alembic.ini","pyproject.toml","uv.lock","Dockerfile"]'
-railway environment edit --service-config <svc> deploy.startCommand <svdb-api|svdb-bot|svdb-worker>
-railway environment edit --service-config <svc> deploy.numReplicas 1
-railway environment edit --service-config <svc> deploy.restartPolicyType ON_FAILURE
-```
-
-API only:
+`railway environment edit --service-config` reports "No changes to apply" in CLI 5.71 even for unset values, so use the GraphQL `serviceInstanceUpdate` mutation. `Builder` has no `DOCKERFILE` enum value; setting `dockerfilePath` selects the Dockerfile build.
 
 ```bash
-railway environment edit --service-config api deploy.preDeployCommand "alembic upgrade head"
-railway environment edit --service-config api deploy.healthcheckPath /health/live
-railway environment edit --service-config api deploy.healthcheckTimeout 300
+railway service source connect --repo bread0xf/SocialsVideoDownloaderBot --branch dev --service <svc>
 ```
 
-Verify `preDeployCommand` syntax with `railway environment edit --help`. If the CLI rejects the string form, use the API start command `sh -c "alembic upgrade head && svdb-api"` instead; with one API replica it is idempotent.
-
-Worker volume:
+Get the environment and service IDs:
 
 ```bash
-railway volume add --service worker --mount-path /app/storage
+railway status --json | jq -r '.environments.edges[0].node.id'
+railway service list --json | jq -r '.[] | "\(.name) \(.id)"'
 ```
 
-If the CLI does not support this, create and attach the volume in the dashboard at `/app/storage`.
+Apply the common settings (repeat per service, changing `startCommand`):
+
+```bash
+railway api 'mutation($environmentId: String!, $serviceId: String!, $input: ServiceInstanceUpdateInput!) {
+  serviceInstanceUpdate(environmentId: $environmentId, serviceId: $serviceId, input: $input)
+}' --variables '{"environmentId":"<env-id>","serviceId":"<service-id>","input":{
+  "startCommand":"svdb-bot",
+  "dockerfilePath":"/Dockerfile",
+  "watchPatterns":["backend/**","apps/**","migrations/**","alembic.ini","pyproject.toml","uv.lock","Dockerfile"]
+}}'
+```
+
+API input adds migration and healthcheck settings:
+
+```json
+{
+  "startCommand": "svdb-api",
+  "dockerfilePath": "/Dockerfile",
+  "healthcheckPath": "/health/live",
+  "healthcheckTimeout": 300,
+  "preDeployCommand": ["alembic upgrade head"]
+}
+```
+
+Worker volume (the object must be linked first; `volume add` has no `--service` flag):
+
+```bash
+railway service link worker
+railway volume add --mount-path /app/storage --json
+```
+
+The volume is created at 500 MB. Expand it in the dashboard if you need a larger cache, then raise `MEDIA_CACHE_MAX_BYTES`.
 
 ## Environment variables
 
