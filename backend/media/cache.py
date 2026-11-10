@@ -49,6 +49,8 @@ async def upsert_cache_entry(
     mime_type: str,
     telegram_file_id: str | None,
     retention_hours: int,
+    title: str | None = None,
+    uploader: str | None = None,
     now: datetime | None = None,
 ) -> uuid.UUID:
     now = now or datetime.now(UTC)
@@ -67,6 +69,8 @@ async def upsert_cache_entry(
             file_size_bytes=file_size_bytes,
             mime_type=mime_type,
             telegram_file_id=telegram_file_id,
+            title=title,
+            uploader=uploader,
             created_at=now,
             expires_at=expires_at,
             last_accessed_at=now,
@@ -79,6 +83,8 @@ async def upsert_cache_entry(
                 "file_size_bytes": file_size_bytes,
                 "mime_type": mime_type,
                 "telegram_file_id": telegram_file_id,
+                "title": title,
+                "uploader": uploader,
                 "created_at": now,
                 "expires_at": expires_at,
                 "last_accessed_at": now,

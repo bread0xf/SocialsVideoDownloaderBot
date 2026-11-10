@@ -5,14 +5,8 @@ from __future__ import annotations
 from html import escape
 
 from apps.bot_v0.branding import BRAND_NAME, BRAND_TAGLINE
+from backend.delivery.presentation import build_caption
 from backend.downloads.engine import PreparedDownload
-
-_PLATFORM_NAMES = {
-    "tiktok": "TikTok",
-    "instagram": "Instagram",
-    "youtube": "YouTube",
-    "facebook": "Facebook",
-}
 
 
 def _handle(username: str | None) -> str:
@@ -34,12 +28,6 @@ def _human_duration(seconds: int) -> str:
         return f"{minutes}m {remainder}s" if minutes else f"{remainder}s"
     hours, minutes = divmod(minutes, 60)
     return f"{hours}h {minutes}m"
-
-
-def _clean_title(title: str | None, *, limit: int = 200) -> str:
-    if not title:
-        return ""
-    return " ".join(title.split())[:limit].rstrip()
 
 
 def progress_bar(used: int, limit: int, *, width: int = 5) -> str:
@@ -167,15 +155,10 @@ def unexpected_error_text() -> str:
     return "<b>Something went wrong</b>\nPlease try again later."
 
 
-def success_caption(prepared: PreparedDownload, username: str | None = None) -> str:
-    platform = _PLATFORM_NAMES.get(
-        prepared.normalized.platform, prepared.normalized.platform.capitalize()
+def success_caption(prepared: PreparedDownload) -> str:
+    return build_caption(
+        platform=prepared.normalized.platform,
+        title=prepared.metadata.title,
+        uploader=prepared.metadata.uploader,
+        height=prepared.media.probe.quality_height,
     )
-    probe = prepared.media.probe
-    lines = []
-    title = _clean_title(prepared.metadata.title)
-    if title:
-        lines.append(f"<b>{escape(title)}</b>")
-    lines.append(f"{platform} · {probe.quality_height}p · {_human_bytes(probe.size_bytes)}")
-    lines.append(f"<i>{escape(_handle(username))}</i>")
-    return "\n".join(lines)[:1024]

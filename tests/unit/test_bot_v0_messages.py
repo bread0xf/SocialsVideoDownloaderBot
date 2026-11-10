@@ -8,7 +8,12 @@ from backend.platforms.adapters.base import FormatSelection, MediaMetadata
 from backend.platforms.urls import NormalizedURL
 
 
-def _prepared(title: str | None, *, size_bytes: int = 1234) -> PreparedDownload:
+def _prepared(
+    title: str | None,
+    *,
+    uploader: str | None = "Example Channel",
+    size_bytes: int = 1234,
+) -> PreparedDownload:
     return PreparedDownload(
         normalized=NormalizedURL(
             url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -24,6 +29,7 @@ def _prepared(title: str | None, *, size_bytes: int = 1234) -> PreparedDownload:
             webpage_url=None,
             extractor="youtube",
             formats=(),
+            uploader=uploader,
         ),
         selection=FormatSelection(
             format_spec="18",
@@ -50,23 +56,24 @@ def _prepared(title: str | None, *, size_bytes: int = 1234) -> PreparedDownload:
 
 
 def test_success_caption_escapes_user_title() -> None:
-    caption = messages.success_caption(_prepared("<script>&"), "sv_test_bot")
+    caption = messages.success_caption(_prepared("<script>&"))
 
     assert "&lt;script&gt;&amp;" in caption
     assert "<script>" not in caption
+    assert "by Example Channel" in caption
     assert "YouTube · 360p" in caption
-    assert "@sv_test_bot" in caption
+    assert "@" not in caption
 
 
 def test_success_caption_survives_a_long_title() -> None:
-    caption = messages.success_caption(_prepared("x" * 500), "sv_test_bot")
+    caption = messages.success_caption(_prepared("x" * 500))
 
     assert len(caption) <= 1024
-    assert caption.endswith("@sv_test_bot</i>")
+    assert caption.endswith("YouTube · 360p")
 
 
-def test_success_caption_omits_missing_title() -> None:
-    caption = messages.success_caption(_prepared(None))
+def test_success_caption_omits_missing_title_and_uploader() -> None:
+    caption = messages.success_caption(_prepared(None, uploader=None))
 
     assert "<b></b>" not in caption
     assert caption.startswith("YouTube · 360p")

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from backend.core.config import Settings, get_settings
 from backend.core.errors import AppError, ErrorCode
 from backend.database.models import DownloadJob, MediaCache, OutboxEvent, User
+from backend.delivery.presentation import build_caption, build_filename
 from backend.delivery.telegram import BotDelivery, DeliveredMedia, Delivery, TelegramDeliveryError
 from backend.downloads.cache_keys import build_media_key, source_identity_hash
 from backend.downloads.outbox import EVENT_DOWNLOAD_REQUESTED, enqueue_download_requested
@@ -154,7 +155,7 @@ async def _resolve_entitlement(ctx: dict[str, Any], snapshot: JobSnapshot) -> En
 
 async def _lookup_cache(
     ctx: dict[str, Any], media_key: str
-) -> tuple[uuid.UUID, str, str | None] | None:
+) -> tuple[uuid.UUID, str, str | None, str | None, str | None] | None:
     settings = _settings(ctx)
     async with _factory(ctx)() as session:
         entry = await find_ready_cache(
@@ -165,7 +166,13 @@ async def _lookup_cache(
         await session.commit()
         if entry is None:
             return None
-        return entry.id, entry.storage_path, entry.telegram_file_id
+        return (
+            entry.id,
+            entry.storage_path,
+            entry.telegram_file_id,
+            entry.title,
+            entry.uploader,
+        )
 
 
 async def _invalidate_cache(ctx: dict[str, Any], cache_entry_id: uuid.UUID) -> None:
@@ -180,6 +187,9 @@ async def _deliver(
     ctx: dict[str, Any],
     snapshot: JobSnapshot,
     media: PreparedMedia,
+    *,
+    caption: str | None = None,
+    filename: str | None = None,
 ) -> DeliveredMedia:
     delivery = cast(Delivery | None, ctx.get("delivery"))
     if delivery is None:
@@ -188,7 +198,13 @@ async def _deliver(
             "Telegram delivery is not configured.",
         )
     try:
-        return await delivery.send_video(snapshot.telegram_user_id, media)
+        return await delivery.send_video(
+            snapshot.telegram_user_id,
+            media,
+            caption=caption,
+            parse_mode="HTML" if caption else None,
+            filename=filename,
+        )
     except TelegramDeliveryError as exc:
         raise AppError(
             ErrorCode.TELEGRAM_DELIVERY_FAILED,
@@ -207,6 +223,8 @@ async def _finalize_delivered(
     delivered: DeliveredMedia,
     cache_entry_id: uuid.UUID | None,
     stored_cache_path: Path | None,
+    title: str | None = None,
+    uploader: str | None = None,
 ) -> bool:
     settings = _settings(ctx)
     for attempt in range(3):
@@ -252,6 +270,8 @@ async def _finalize_delivered(
                         mime_type=media.mime_type,
                         telegram_file_id=delivered.file_id,
                         retention_hours=settings.media_retention_hours,
+                        title=title,
+                        uploader=uploader,
                         now=now,
                     )
                 job.cache_entry_id = final_cache_id
@@ -388,7 +408,7 @@ async def process_download(ctx: dict[str, Any], job_id: str) -> str:
 
         cached = await _lookup_cache(ctx, media_key)
         if cached is not None:
-            cache_entry_id, storage_path, _ = cached
+            cache_entry_id, storage_path, _, cached_title, cached_uploader = cached
             try:
                 cached_probe = await probe_media(Path(storage_path))
                 validate_probe(
@@ -408,7 +428,21 @@ async def process_download(ctx: dict[str, Any], job_id: str) -> str:
                 await _set_status(ctx, snapshot.job_id, JobStatus.SELECTING_FORMAT)
                 await _set_status(ctx, snapshot.job_id, JobStatus.PROCESSING)
                 await _set_status(ctx, snapshot.job_id, JobStatus.DELIVERING)
-                delivered = await _deliver(ctx, snapshot, media)
+                delivered = await _deliver(
+                    ctx,
+                    snapshot,
+                    media,
+                    caption=build_caption(
+                        platform=normalized_url.platform,
+                        title=cached_title,
+                        uploader=cached_uploader,
+                        height=cached_probe.quality_height,
+                    ),
+                    filename=build_filename(
+                        normalized_url.platform,
+                        normalized_url.source_id,
+                    ),
+                )
                 finalized = await _finalize_delivered(
                     ctx,
                     snapshot=snapshot,
@@ -468,7 +502,21 @@ async def process_download(ctx: dict[str, Any], job_id: str) -> str:
                 ffmpeg_timeout_seconds=settings.ffmpeg_timeout_seconds,
             )
             await _set_status(ctx, snapshot.job_id, JobStatus.DELIVERING)
-            delivered = await _deliver(ctx, snapshot, media)
+            delivered = await _deliver(
+                ctx,
+                snapshot,
+                media,
+                caption=build_caption(
+                    platform=normalized_url.platform,
+                    title=metadata.title,
+                    uploader=metadata.uploader,
+                    height=media.probe.quality_height,
+                ),
+                filename=build_filename(
+                    normalized_url.platform,
+                    normalized_url.source_id,
+                ),
+            )
 
             stored_cache_path: Path | None = None
             try:
@@ -490,6 +538,8 @@ async def process_download(ctx: dict[str, Any], job_id: str) -> str:
                 delivered=delivered,
                 cache_entry_id=None,
                 stored_cache_path=stored_cache_path,
+                title=metadata.title,
+                uploader=metadata.uploader,
             )
             outcome = "completed" if finalized else "completed_unfinalized"
             _log_completed(

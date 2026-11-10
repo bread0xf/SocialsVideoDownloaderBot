@@ -38,7 +38,7 @@ async def test_send_video_uploads_file_bytes(tmp_path: Path) -> None:
     bot = _FakeBot()
     delivery = BotDelivery(cast(Bot, bot))
 
-    result = await delivery.send_video(123, media, caption="test")
+    result = await delivery.send_video(123, media, caption="test", filename="youtube-abc123.mp4")
 
     assert result.message_id == 7
     assert result.file_id == "file-id"
@@ -46,5 +46,5 @@ async def test_send_video_uploads_file_bytes(tmp_path: Path) -> None:
     video = bot.kwargs["video"]
     assert isinstance(video, InputFile)
     assert video.input_file_content == payload
-    assert video.filename == "video.mp4"
+    assert video.filename == "youtube-abc123.mp4"
     assert video.mimetype == "video/mp4"

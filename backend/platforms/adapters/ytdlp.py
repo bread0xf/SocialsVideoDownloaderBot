@@ -224,6 +224,13 @@ def parse_metadata(data: dict[str, object]) -> MediaMetadata:
             if parsed is not None:
                 formats.append(parsed)
 
+    uploader = (
+        _str_or_none(data.get("uploader"))
+        or _str_or_none(data.get("channel"))
+        or _str_or_none(data.get("creator"))
+        or _str_or_none(data.get("uploader_id"))
+    )
+
     return MediaMetadata(
         title=_str_or_none(data.get("title")),
         duration_seconds=_float_or_none(data.get("duration")),
@@ -232,6 +239,7 @@ def parse_metadata(data: dict[str, object]) -> MediaMetadata:
         extractor=_str_or_none(data.get("extractor_key")) or _str_or_none(data.get("extractor")),
         formats=tuple(formats),
         availability=availability,
+        uploader=uploader,
     )
 
 

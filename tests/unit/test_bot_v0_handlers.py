@@ -93,7 +93,7 @@ class _FakeEngine:
 class _FakeDelivery:
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
-        self.calls: list[tuple[int, PreparedMedia, str | None, str | None]] = []
+        self.calls: list[tuple[int, PreparedMedia, str | None, str | None, str | None]] = []
 
     async def send_video(
         self,
@@ -102,8 +102,9 @@ class _FakeDelivery:
         *,
         caption: str | None = None,
         parse_mode: str | None = None,
+        filename: str | None = None,
     ) -> DeliveredMedia:
-        self.calls.append((chat_id, media, caption, parse_mode))
+        self.calls.append((chat_id, media, caption, parse_mode, filename))
         if self.error is not None:
             raise self.error
         return DeliveredMedia(message_id=1, file_id=None)
@@ -146,6 +147,7 @@ def _prepared() -> PreparedDownload:
             webpage_url=None,
             extractor="youtube",
             formats=(),
+            uploader="Example Publisher",
         ),
         selection=FormatSelection(
             format_spec="18",
@@ -248,12 +250,18 @@ async def test_delivers_and_counts_only_on_success() -> None:
     assert message.edits[0][1]["reply_markup"] is not None
     assert state.usage.used(7) == 1
     assert len(delivery.calls) == 1
-    caption, parse_mode = delivery.calls[0][2], delivery.calls[0][3]
+    caption, parse_mode, filename = (
+        delivery.calls[0][2],
+        delivery.calls[0][3],
+        delivery.calls[0][4],
+    )
     assert caption is not None
     assert "<b>Example video</b>" in caption
+    assert "by Example Publisher" in caption
     assert "YouTube · 360p" in caption
-    assert "@sv_test_bot" in caption
+    assert "@sv_test_bot" not in caption
     assert parse_mode == "HTML"
+    assert filename == "youtube-dQw4w9WgXcQ.mp4"
 
 
 async def test_reports_progress_stages() -> None:

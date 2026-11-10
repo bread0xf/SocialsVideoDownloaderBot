@@ -36,6 +36,7 @@ class MediaMetadata:
     extractor: str | None
     formats: tuple[MediaFormat, ...]
     availability: str | None = None
+    uploader: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

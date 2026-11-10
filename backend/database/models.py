@@ -201,6 +201,8 @@ class MediaCache(Base):
     media_key: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     platform: Mapped[str] = mapped_column(String(32), nullable=False)
     source_identity_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str | None] = mapped_column(Text)
+    uploader: Mapped[str | None] = mapped_column(Text)
     output_profile: Mapped[str] = mapped_column(String(64), nullable=False)
     processing_version: Mapped[str] = mapped_column(String(32), nullable=False)
     storage_path: Mapped[str] = mapped_column(Text, nullable=False)

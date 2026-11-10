@@ -27,7 +27,7 @@ A Railway development environment (API + bot + worker + managed Postgres/Redis) 
 | yt-dlp adapter | Implemented | `backend/platforms/adapters/ytdlp.py` | `tests/unit/test_ytdlp_adapter.py`, `tests/integration/test_live_extraction.py` | Split metadata/download timeouts, isolated subprocess env, platform error mapping, DRM/availability checks, final-URL validation |
 | Automatic format selection | Implemented | `backend/media/selection.py` | `tests/unit/test_format_selection.py` | Plan ceiling, H.264/AAC preference, combined/separate streams, size estimates, portrait quality, silent video, DRM exclusion |
 | FFmpeg/FFprobe validation and preparation | Implemented | `backend/media/ffprobe.py`, `backend/media/processing.py` | `tests/integration/test_media_processing.py`, worker tests | Orientation-aware downscale; remux when already compliant, otherwise transcode |
-| Telegram media delivery | Partial | `backend/delivery/telegram.py`, `backend/workers/tasks.py` | `tests/integration/test_worker_outcomes.py`, `tests/unit/test_telegram_delivery.py` | Fixed 2026-11-10: `InputFile(str(path))` uploaded the path text instead of the video bytes, producing black unplayable videos. A fake Bot API probe confirms the uploaded bytes now match the source file. Live Bot API re-test pending |
+| Telegram media delivery | Implemented | `backend/delivery/telegram.py`, `backend/delivery/presentation.py`, `backend/workers/tasks.py` | `tests/integration/test_worker_outcomes.py`, `tests/unit/test_telegram_delivery.py`, `tests/unit/test_presentation.py` | Live delivery confirmed 2026-11-10 after fixing `InputFile(str(path))`, which uploaded the path text instead of the video bytes. Captions carry title, uploader and quality; filenames use platform-source ID |
 | Usage commit/release | Implemented | `backend/usage/service.py`, `backend/workers/tasks.py` | `tests/integration/test_worker_outcomes.py` | Terminal failure releases quota and writes no commit entry |
 | Premium entitlement recheck on cache hit | Implemented | `backend/entitlements/service.py`, `backend/workers/tasks.py` | `tests/integration/test_worker_outcomes.py` | Expired subscription falls back to Free before cache lookup |
 | 24-hour cache cleanup | Partial | `backend/workers/tasks.py`, `backend/storage/cache.py` | — | Expiry and size eviction implemented; dedicated tests pending |
@@ -49,6 +49,7 @@ A Railway development environment (API + bot + worker + managed Postgres/Redis) 
 | 2026-11-09 | v0 bot | 168 passed, 17 skipped (Postgres unavailable locally); profile setup applied to the live bot |
 | 2026-11-09 | Docs consolidation and Railway readiness | Ruff and format passed; mypy passed (59 files); 183 passed, 5 skipped (live extraction gated); Docker image built successfully |
 | 2026-11-10 | Telegram upload fix | Ruff and format passed; mypy passed (59 files); 184 passed, 5 skipped; fake Bot API probe confirmed the uploaded video bytes are byte-identical to the source file |
+| 2026-11-10 | Delivery metadata polish | Ruff and format passed; mypy passed (60 files); 192 passed, 5 skipped; migration adds `media_cache.title`/`uploader` and was applied to a fresh database |
 
 Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` to an isolated database, or let the suite create a temporary database on the server in `DATABASE_URL`. When PostgreSQL is unavailable those tests skip rather than fail.
 
@@ -74,7 +75,7 @@ Live tests are gated by `SVDB_LIVE_EXTRACTION=1`; see `tests/integration/test_li
 ## Known gaps and next work
 
 1. Enforce tier-specific size, duration and concurrency limits.
-2. Add live Telegram delivery tests and map Bot API errors.
+2. Add automated live Telegram delivery tests and map Bot API errors.
 3. Add cache-eviction and stale-job reconciliation tests.
 4. Add handler tests for `apps/bot` `/start`, `/help`, `/status` and URL intake.
 5. Add controlled egress or network policy for full DNS-rebinding protection.

@@ -21,6 +21,7 @@ class Delivery(Protocol):
         *,
         caption: str | None = None,
         parse_mode: str | None = None,
+        filename: str | None = None,
     ) -> DeliveredMedia: ...
 
     async def send_text(self, chat_id: int, text: str) -> None: ...
@@ -37,12 +38,13 @@ class BotDelivery:
         *,
         caption: str | None = None,
         parse_mode: str | None = None,
+        filename: str | None = None,
     ) -> DeliveredMedia:
         duration = int(media.probe.duration_seconds) if media.probe.duration_seconds else None
         try:
             message = await self._bot.send_video(
                 chat_id=chat_id,
-                video=InputFile(media.path.read_bytes(), filename="video.mp4"),
+                video=InputFile(media.path.read_bytes(), filename=filename or "video.mp4"),
                 caption=caption,
                 parse_mode=parse_mode,
                 supports_streaming=True,

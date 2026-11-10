@@ -13,6 +13,7 @@ from telegram.ext import ContextTypes
 from apps.bot_v0 import branding, keyboards, messages
 from apps.bot_v0.state import BotV0State
 from backend.core.errors import AppError, ErrorCode
+from backend.delivery.presentation import build_caption, build_filename
 from backend.delivery.telegram import Delivery, TelegramDeliveryError
 from backend.downloads.engine import InProcessEngine, PreparedDownload
 
@@ -109,8 +110,17 @@ async def _deliver(
         await delivery.send_video(
             chat_id,
             prepared.media,
-            caption=messages.success_caption(prepared, bot.username),
+            caption=build_caption(
+                platform=prepared.normalized.platform,
+                title=prepared.metadata.title,
+                uploader=prepared.metadata.uploader,
+                height=prepared.media.probe.quality_height,
+            ),
             parse_mode="HTML",
+            filename=build_filename(
+                prepared.normalized.platform,
+                prepared.normalized.source_id,
+            ),
         )
     except TelegramDeliveryError as exc:
         raise AppError(

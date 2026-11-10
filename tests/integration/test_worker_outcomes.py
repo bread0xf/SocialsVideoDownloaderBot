@@ -33,6 +33,8 @@ class _RecordingDelivery:
     def __init__(self) -> None:
         self.videos: list[tuple[int, PreparedMedia]] = []
         self.texts: list[tuple[int, str]] = []
+        self.captions: list[str | None] = []
+        self.filenames: list[str | None] = []
 
     async def send_video(
         self,
@@ -41,8 +43,11 @@ class _RecordingDelivery:
         *,
         caption: str | None = None,
         parse_mode: str | None = None,
+        filename: str | None = None,
     ) -> DeliveredMedia:
         self.videos.append((chat_id, media))
+        self.captions.append(caption)
+        self.filenames.append(filename)
         return DeliveredMedia(message_id=1, file_id="cached-file-id")
 
     async def send_text(self, chat_id: int, text: str) -> None:
@@ -257,15 +262,17 @@ async def test_cache_hit_rechecks_entitlement_before_reusing_media(
         premium_file = cache_root / f"{premium_key}.mp4"
         premium_content = b"premium media"
         premium_file.write_bytes(premium_content)
-        for media_key, storage_path, output_profile, content in (
-            (free_key, free_file, "free-480p", free_content),
-            (premium_key, premium_file, "premium-2160p", premium_content),
+        for media_key, storage_path, output_profile, content, title, uploader in (
+            (free_key, free_file, "free-480p", free_content, "Cached title", "Cached creator"),
+            (premium_key, premium_file, "premium-2160p", premium_content, None, None),
         ):
             session.add(
                 MediaCache(
                     media_key=media_key,
                     platform=normalized.platform,
                     source_identity_hash="source-hash",
+                    title=title,
+                    uploader=uploader,
                     output_profile=output_profile,
                     processing_version=settings.processing_version,
                     storage_path=str(storage_path),
@@ -316,6 +323,11 @@ async def test_cache_hit_rechecks_entitlement_before_reusing_media(
     delivered_media = delivery.videos[0][1]
     assert delivered_media.path == free_file
     assert delivered_media.path != premium_file
+    assert delivery.captions[0] is not None
+    assert "<b>Cached title</b>" in delivery.captions[0]
+    assert "by Cached creator" in delivery.captions[0]
+    assert "YouTube · 480p" in delivery.captions[0]
+    assert delivery.filenames[0] == "youtube-dQw4w9WgXcQ.mp4"
 
     async with session_factory() as session:
         job = await session.scalar(select(DownloadJob).where(DownloadJob.id == job_id))

@@ -44,6 +44,7 @@ def _metadata(**overrides: object) -> dict[str, object]:
         "_type": "video",
         "id": "abc123",
         "title": "Example",
+        "uploader": "Example Channel",
         "duration": 120.0,
         "is_live": False,
         "live_status": "not_live",
@@ -64,12 +65,26 @@ def test_parses_youtube_separate_streams() -> None:
     metadata = parse_metadata(_metadata())
 
     assert metadata.title == "Example"
+    assert metadata.uploader == "Example Channel"
     assert metadata.duration_seconds == 120.0
     assert metadata.extractor == "Youtube"
     assert metadata.webpage_url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     assert len(metadata.formats) == 2
     assert metadata.formats[0].height == 1080
     assert metadata.formats[1].has_audio is True
+
+
+def test_uploader_falls_back_to_channel_or_creator() -> None:
+    data = _metadata()
+    del data["uploader"]
+    data["channel"] = "Channel Name"
+
+    assert parse_metadata(data).uploader == "Channel Name"
+
+    del data["channel"]
+    data["creator"] = "Creator Name"
+
+    assert parse_metadata(data).uploader == "Creator Name"
 
 
 def test_parses_tiktok_combined_format() -> None:
