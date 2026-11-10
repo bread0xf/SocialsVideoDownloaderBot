@@ -27,7 +27,7 @@ A Railway development environment (API + bot + worker + managed Postgres/Redis) 
 | yt-dlp adapter | Implemented | `backend/platforms/adapters/ytdlp.py` | `tests/unit/test_ytdlp_adapter.py`, `tests/integration/test_live_extraction.py` | Split metadata/download timeouts, isolated subprocess env, platform error mapping, DRM/availability checks, final-URL validation |
 | Automatic format selection | Implemented | `backend/media/selection.py` | `tests/unit/test_format_selection.py` | Plan ceiling, H.264/AAC preference, combined/separate streams, size estimates, portrait quality, silent video, DRM exclusion |
 | FFmpeg/FFprobe validation and preparation | Implemented | `backend/media/ffprobe.py`, `backend/media/processing.py` | `tests/integration/test_media_processing.py`, worker tests | Orientation-aware downscale; remux when already compliant, otherwise transcode |
-| Telegram media delivery | Partial | `backend/delivery/telegram.py`, `backend/workers/tasks.py` | `tests/integration/test_worker_outcomes.py` | Delivery abstraction exercised with fakes only; live Bot API test pending |
+| Telegram media delivery | Partial | `backend/delivery/telegram.py`, `backend/workers/tasks.py` | `tests/integration/test_worker_outcomes.py`, `tests/unit/test_telegram_delivery.py` | Fixed 2026-11-10: `InputFile(str(path))` uploaded the path text instead of the video bytes, producing black unplayable videos. A fake Bot API probe confirms the uploaded bytes now match the source file. Live Bot API re-test pending |
 | Usage commit/release | Implemented | `backend/usage/service.py`, `backend/workers/tasks.py` | `tests/integration/test_worker_outcomes.py` | Terminal failure releases quota and writes no commit entry |
 | Premium entitlement recheck on cache hit | Implemented | `backend/entitlements/service.py`, `backend/workers/tasks.py` | `tests/integration/test_worker_outcomes.py` | Expired subscription falls back to Free before cache lookup |
 | 24-hour cache cleanup | Partial | `backend/workers/tasks.py`, `backend/storage/cache.py` | — | Expiry and size eviction implemented; dedicated tests pending |
@@ -48,6 +48,7 @@ A Railway development environment (API + bot + worker + managed Postgres/Redis) 
 | 2026-11-06 | Extraction hardening | 142 passed, 5 skipped; live extraction passed for all four platforms |
 | 2026-11-09 | v0 bot | 168 passed, 17 skipped (Postgres unavailable locally); profile setup applied to the live bot |
 | 2026-11-09 | Docs consolidation and Railway readiness | Ruff and format passed; mypy passed (59 files); 183 passed, 5 skipped (live extraction gated); Docker image built successfully |
+| 2026-11-10 | Telegram upload fix | Ruff and format passed; mypy passed (59 files); 184 passed, 5 skipped; fake Bot API probe confirmed the uploaded video bytes are byte-identical to the source file |
 
 Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` to an isolated database, or let the suite create a temporary database on the server in `DATABASE_URL`. When PostgreSQL is unavailable those tests skip rather than fail.
 
