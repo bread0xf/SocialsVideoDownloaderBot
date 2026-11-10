@@ -129,7 +129,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = keyboards.start_keyboard()
     try:
         await message.reply_photo(
-            photo=InputFile(str(branding.logo_path())),
+            photo=InputFile(branding.logo_path().read_bytes(), filename="logo.png"),
             caption=caption,
             parse_mode="HTML",
             reply_markup=keyboard,
