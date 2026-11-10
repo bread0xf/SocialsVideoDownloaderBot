@@ -55,7 +55,7 @@ Extraction has been live-verified for public YouTube, TikTok, Instagram and Face
 
 The standalone v0 bot (`apps/bot_v0`) is implemented for development and demos: branded HTML cards, inline buttons and in-process downloads with in-memory quota. It is not a production ledger.
 
-Remaining hardening work is tracked in `docs/implementation-status.md`: live Telegram delivery tests, cache-cleanup and stale-job tests, handler tests, tier-specific size/duration limits, and controlled egress for full DNS-rebinding protection. Premium pricing and allowance are approved; billing, rewarded ads and sponsor features are not implemented yet.
+Remaining hardening work is tracked in `docs/implementation-status.md`: automated live Telegram delivery tests, cache-cleanup and stale-job tests, handler tests, tier-specific size/duration limits, and controlled egress for full DNS-rebinding protection. Premium pricing and allowance are approved; billing, rewarded ads and sponsor features are not implemented yet.
 
 `backend_specs/` is the frozen implementation baseline; where `docs/` conflicts with it, `backend_specs/` wins. `docs/` describes implemented behavior and living operational guidance.
 

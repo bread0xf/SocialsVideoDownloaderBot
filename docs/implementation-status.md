@@ -2,13 +2,13 @@
 
 > **Authority:** `backend_specs/` is the approved implementation baseline and wins any conflict with this file. This document is the only tracker for what is actually implemented. Do not mark an item complete without code and test references.
 >
-> **Last reviewed:** 2026-11-09.
+> **Last reviewed:** 2026-11-10.
 
 ## Current state
 
-The free-tier pipeline and the standalone v0 bot are implemented. Extraction has been live-verified for public YouTube, TikTok, Instagram and Facebook videos. The system is **not production-ready**: billing, rewarded ads and sponsors do not exist; Telegram delivery has only been exercised with fakes; controlled egress and tier-specific size/duration enforcement are incomplete.
+The free-tier pipeline and the standalone v0 bot are implemented. Extraction has been live-verified for public YouTube, TikTok, Instagram and Facebook videos. Telegram delivery is live-confirmed, including title/uploader captions and ID-based filenames; automated live delivery tests are still pending. The system is **not production-ready**: billing, rewarded ads and sponsors do not exist, and controlled egress and tier-specific size/duration enforcement are incomplete.
 
-A Railway development environment (API + bot + worker + managed Postgres/Redis) is planned; its status is recorded under [Deployed environments](#deployed-environments).
+The Railway development environment (API + bot + worker + managed Postgres/Redis) is deployed and serving; its status is recorded under [Deployed environments](#deployed-environments).
 
 ## Requirement status
 
@@ -16,7 +16,7 @@ A Railway development environment (API + bot + worker + managed Postgres/Redis) 
 |---|---|---|---|---|
 | Repository reconnaissance | Implemented | `README.md`, `backend_specs/` | — | Conflicts reconciled: Lagos quota, 480p free ceiling, 24h retention |
 | Configuration, logging, runtime skeleton | Implemented | `backend/core/config.py`, `backend/core/logging.py` | `tests/unit/test_config.py`, `tests/unit/test_logging.py` | Fail-fast production token check; locked defaults |
-| Compose topology and health endpoints | Implemented | `compose.yaml`, `Dockerfile`, `backend/api/` | `tests/unit/test_health.py` | `/health/live` tested; `/health/ready` needs live Postgres/Redis |
+| Compose topology and health endpoints | Implemented | `compose.yaml`, `Dockerfile`, `backend/api/` | `tests/unit/test_health.py` | `/health/live` tested; `/health/ready` verified on Railway against live Postgres/Redis |
 | Alembic schema and seed data | Implemented | `alembic.ini`, `migrations/` | Integration fixtures use current metadata | Free/Premium plans and four platform-registry rows seeded |
 | Main bot `/start`, `/help`, `/status`, URL intake | Partial | `apps/bot/main.py` | — | Handlers implemented; no handler-level tests |
 | v0 standalone bot | Implemented (development only) | `apps/bot_v0/`, `backend/downloads/engine.py` | `tests/unit/test_bot_v0_*.py`, `test_inprocess_engine.py` | Single process, in-memory quota, no Postgres/Redis/worker; not a production ledger |
@@ -69,7 +69,7 @@ Live tests are gated by `SVDB_LIVE_EXTRACTION=1`; see `tests/integration/test_li
 | Environment | Status | Notes |
 |---|---|---|
 | Local Docker Compose | Implemented | Postgres, Redis, API, bot and worker; worker mounts the media volume |
-| Railway development | API and worker live; bot pending token | API healthy at `https://socialsvideodownloaderbot-production.up.railway.app`; migrations applied; worker cron dispatching the outbox with no schema errors. Bot awaits `TELEGRAM_BOT_TOKEN`. Runbook in `docs/operations/railway-dev-environment.md` |
+| Railway development | Full stack live; delivery verified | API healthy at `https://socialsvideodownloaderbot-production.up.railway.app`; both migrations applied; bot polling and worker cron running; live video delivery confirmed 2026-11-10. Runbook in `docs/operations/railway-dev-environment.md` |
 | Production | Not deployed | Hosting decision D-12 remains open; see `docs/project/unresolved-decisions.md` |
 
 ## Known gaps and next work

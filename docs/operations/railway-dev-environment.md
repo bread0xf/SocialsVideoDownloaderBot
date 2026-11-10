@@ -1,10 +1,10 @@
 # Railway Development Environment
 
-**Status:** Partially deployed 2026-11-09. The API and worker are running; the worker cron dispatches the outbox against the migrated schema. The bot awaits `TELEGRAM_BOT_TOKEN`, which the owner must set in Railway, and shows `CRASHED` until then. This runbook is the setup and operations reference.
+**Status:** Fully deployed and live-verified 2026-11-10. API, bot and worker are running; both migrations are applied; the worker cron dispatches the outbox; and live Telegram delivery is confirmed, including captions and ID-based filenames. This runbook is the setup and operations reference.
 
 **Purpose:** end-to-end Telegram testing and engine timing on reliable disk and bandwidth. This environment is **not production-ready** and does not choose the production host (D-12).
 
-## Deployed instance (2026-11-09)
+## Deployed instance (deployed 2026-11-09; verified 2026-11-10)
 
 | Item | Value |
 |---|---|
@@ -16,6 +16,7 @@
 | Databases | `Postgres`, `Redis` (managed) |
 | Worker volume | `worker-volume`, mounted at `/app/storage`; currently 500 MB |
 | Cache cap | 200 MiB (`MEDIA_CACHE_MAX_BYTES=209715200`) to fit the 500 MB volume |
+| Cache namespace | `PROCESSING_VERSION=2` on the worker after the title/uploader migration |
 
 Railway injects `PORT=8080`; the API honors it. The public domain must target port 8080. If you prefer port 8000, set `PORT=8000` on the API service and point the domain at 8000 instead.
 
@@ -29,7 +30,7 @@ Railway was selected because it runs long-lived polling and worker processes, us
 |---|---|---|---|---|
 | `api` | `svdb-api` | yes, `/health/live` | — | 1 |
 | `bot` | `svdb-bot` | no | — | 1 |
-| `worker` | `svdb-worker` | no | `/app/storage` (10 GB) | 1 |
+| `worker` | `svdb-worker` | no | `/app/storage` (500 MB) | 1 |
 | `Postgres` | managed | private | — | — |
 | `Redis` | managed | private | — | — |
 
@@ -116,6 +117,7 @@ The volume is created at 500 MB. Expand it in the dashboard if you need a larger
 | `TELEGRAM_POLLING` | — | `true` | — |
 | `MEDIA_ROOT` | — | — | `/app/storage` |
 | `MEDIA_CACHE_MAX_BYTES` | — | — | `209715200` (200 MiB on the 500 MB volume) |
+| `PROCESSING_VERSION` | — | — | `2` (cache namespace) |
 | `WORKER_CONCURRENCY` | — | — | `1` |
 | `RAILWAY_RUN_UID` | — | — | `0` |
 
@@ -173,4 +175,4 @@ Do not report success until `railway deployment list` shows `SUCCESS` for each s
 
 ## Cost and limits
 
-Railway bills usage on the Hobby plan. Three always-on app services plus managed Postgres, Redis and a 10 GB volume are a small but non-zero monthly cost. Shared CPU and network mean timings are indicative, not a clean benchmark. Cloud Bot API delivery remains capped at 48 MiB, so Premium 4K cannot be validated here.
+Railway bills usage on the Hobby plan. Three always-on app services plus managed Postgres, Redis and a 500 MB volume are a small but non-zero monthly cost; the volume can be expanded in the dashboard. Shared CPU and network mean timings are indicative, not a clean benchmark. Cloud Bot API delivery remains capped at 48 MiB, so Premium 4K cannot be validated here.

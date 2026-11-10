@@ -59,7 +59,7 @@ PostgreSQL is the durable source of truth. This document describes the **impleme
 ### `media_cache`
 - `id` UUID primary key
 - `media_key` text unique
-- `platform` varchar(32), `source_identity_hash`, `output_profile`, `processing_version`
+- `platform` varchar(32), `source_identity_hash`, `title`, `uploader`, `output_profile`, `processing_version`
 - `storage_path`, `file_size_bytes` (≥ 0), `mime_type`, `telegram_file_id`
 - `created_at`, `expires_at`, `last_accessed_at`, `status`
 - Index: `(expires_at, status)`

@@ -1,6 +1,6 @@
 # Security Architecture
 
-**Implementation status:** URL validation, the ingestion DNS guard, final extracted-URL allowlisting, isolated subprocess environments, argument-array process execution, bounded timeouts and output caps, non-root container execution, secret-free logging and quota/entitlement integrity are implemented and unit- or integration-tested. Controlled egress/network policy for full DNS-rebinding protection, live Telegram delivery verification, rate limiting and the billing/reward controls are **not implemented**. See `docs/implementation-status.md`.
+**Implementation status:** URL validation, the ingestion DNS guard, final extracted-URL allowlisting, isolated subprocess environments, argument-array process execution, bounded timeouts and output caps, non-root container execution, secret-free logging and quota/entitlement integrity are implemented and unit- or integration-tested. Controlled egress/network policy for full DNS-rebinding protection, automated live Telegram delivery tests, rate limiting and the billing/reward controls are **not implemented**. See `docs/implementation-status.md`.
 
 **Hosted development note:** the Railway dev worker runs with `RAILWAY_RUN_UID=0` because the persistent volume is mounted root-owned. That is a development-only concession; production must use an entrypoint chown/drop or object storage instead.
 
