@@ -28,6 +28,7 @@ from backend.platforms.adapters.base import PlatformAdapter
 from backend.platforms.adapters.ytdlp import YtDlpAdapter
 from backend.platforms.registry import platform_registry
 from backend.platforms.urls import NormalizedURL, normalize_url, resolve_public_addresses
+from backend.rewards.service import expire_stale_reward_sessions
 from backend.storage.cache import remove_cache_file, store_cache_file
 from backend.storage.workspace import cleanup_stale_workspaces, job_workspace
 from backend.usage.service import commit_quota, release_quota
@@ -703,6 +704,16 @@ async def cleanup_cache(ctx: dict[str, Any]) -> int:
     if removed:
         logger.info("cache_cleanup_completed", removed=removed)
     return removed
+
+
+async def expire_reward_sessions(ctx: dict[str, Any]) -> int:
+    """Expire served-ad sessions past their TTL, freeing the ad cooldown."""
+    async with _factory(ctx)() as session:
+        expired = await expire_stale_reward_sessions(session, now=datetime.now(UTC))
+        await session.commit()
+    if expired:
+        logger.info("reward_sessions_cleanup_completed", count=expired)
+    return expired
 
 
 async def reconcile_stale_jobs(ctx: dict[str, Any]) -> int:

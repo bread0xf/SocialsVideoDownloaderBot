@@ -1,10 +1,24 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.15'",
     "python_full_version == '3.14.*'",
     "python_full_version < '3.14'",
+]
+
+[[package]]
+name = "adsun"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/30/b4/ada5635385a656ec9fbe3d004c15d90f3b4d3e79cf26d507a151bf718f5e/adsun-1.0.0.tar.gz", hash = "sha256:749e00c97ada58fbe13e108f5e723ca93ce66db728b03696278df2fe966958b9", size = 7703, upload-time = "2026-11-11T09:44:35.572Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/72/99/3e2d58fb5e4afe016b20d948eba11334be3dceccacac7e8d63385641b91b/adsun-1.0.0-py3-none-any.whl", hash = "sha256:d9e90d2c6b1e2e2c7db7a214337abb7f630e518cc719f2ef5279784613d13714", size = 9807, upload-time = "2026-11-11T09:44:34.362Z" },
+]
+
+[package.optional-dependencies]
+ptb = [
+    { name = "python-telegram-bot" },
 ]
 
 [[package]]
@@ -1331,6 +1345,7 @@ name = "socialsvideodownloaderbot"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "adsun", extra = ["ptb"] },
     { name = "alembic" },
     { name = "arq" },
     { name = "asyncpg" },
@@ -1361,6 +1376,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "adsun", extras = ["ptb"], specifier = ">=1.0.0" },
     { name = "alembic", specifier = ">=1.20.1" },
     { name = "arq", specifier = ">=0.28.0" },
     { name = "asyncpg", specifier = ">=0.32.0" },

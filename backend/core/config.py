@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from backend.ads.block import normalise_block_id
+
 _LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
 
@@ -37,6 +39,28 @@ class Settings(BaseSettings):
     v0_media_root: Path = Path("./storage/v0")
     v0_daily_limit: int | None = Field(default=None, ge=1)
     v0_max_active_jobs_per_user: int = Field(default=1, ge=1)
+
+    # Rewarded ads (Adsun). Disabled until the reward mechanism and open
+    # decisions are approved; the bot serves ads and the API grants credits.
+    adsun_enabled: bool = False
+    adsun_token: SecretStr = SecretStr("")
+    adsun_block_id: str = ""
+
+    # Reward callback. The secret is static and travels in the query string, so
+    # the API access log must stay disabled (backend/api/main.py).
+    adsun_reward_secret: SecretStr = SecretStr("")
+    adsun_callback_max_age_seconds: int = Field(default=900, ge=1)
+    adsun_callback_future_skew_seconds: int = Field(default=60, ge=0)
+
+    # Reward credit policy. D-05/D-06/D-07 defaults are proposals in the plan,
+    # not approved product values.
+    reward_daily_cap: int = Field(default=10, ge=1)
+    reward_credit_expiry: Literal["end_of_quota_day", "ttl"] = "end_of_quota_day"
+    reward_credit_ttl_seconds: int | None = Field(default=None, ge=1)
+    reward_premium_eligible: bool = False
+    # How long a served ad remains redeemable. The pending session doubles as
+    # the ad cooldown, so this also caps how long a user can be blocked.
+    reward_session_ttl_seconds: int = Field(default=900, ge=1)
 
     quota_timezone: str = "Africa/Lagos"
     free_daily_limit: int = Field(default=5, ge=1)
@@ -90,10 +114,31 @@ class Settings(BaseSettings):
             raise ValueError(f"Unknown QUOTA_TIMEZONE: {value}") from exc
         return value
 
+    @field_validator("adsun_block_id")
+    @classmethod
+    def _normalise_adsun_block_id(cls, value: str) -> str:
+        """Accept ``50001``, ``bot-50001`` or ``tw-50001`` and store the numeric part."""
+        try:
+            return normalise_block_id(value)
+        except ValueError as exc:
+            raise ValueError(
+                "ADSUN_BLOCK_ID must be numeric, e.g. 50001, bot-50001 or tw-50001"
+            ) from exc
+
+    @field_validator("adsun_reward_secret")
+    @classmethod
+    def _validate_adsun_reward_secret(cls, value: SecretStr) -> SecretStr:
+        secret = value.get_secret_value()
+        if secret and len(secret) < 32:
+            raise ValueError("ADSUN_REWARD_SECRET must be at least 32 characters when set")
+        return value
+
     @model_validator(mode="after")
     def _validate_production_requirements(self) -> "Settings":
         if self.app_env == "production" and not self.telegram_token:
             raise ValueError("TELEGRAM_BOT_TOKEN is required in production")
+        if self.reward_credit_expiry == "ttl" and self.reward_credit_ttl_seconds is None:
+            raise ValueError("REWARD_CREDIT_TTL_SECONDS is required when REWARD_CREDIT_EXPIRY=ttl")
         return self
 
     @property
@@ -103,6 +148,23 @@ class Settings(BaseSettings):
     @property
     def telegram_v0_token(self) -> str:
         return self.telegram_v0_bot_token.get_secret_value() or self.telegram_token
+
+    @property
+    def adsun_account_token(self) -> str:
+        return self.adsun_token.get_secret_value()
+
+    @property
+    def adsun_configured(self) -> bool:
+        return bool(self.adsun_enabled and self.adsun_account_token and self.adsun_block_id)
+
+    @property
+    def adsun_reward_secret_value(self) -> str:
+        return self.adsun_reward_secret.get_secret_value()
+
+    @property
+    def adsun_callback_configured(self) -> bool:
+        """The API only needs the secret and block; the account token is bot-only."""
+        return bool(self.adsun_enabled and self.adsun_reward_secret_value and self.adsun_block_id)
 
     @property
     def v0_allowed_user_id_set(self) -> frozenset[int]:

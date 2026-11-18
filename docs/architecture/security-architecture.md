@@ -64,6 +64,11 @@ Threats:
 - Authenticate reward-provider callbacks, validate timestamps/nonces and reject replay.
 - Never credit rewards from client-side claims.
 - Restrict admin functions and provider secrets to least-privilege roles.
+- Adsun reward callbacks use a static shared secret in the query string because the provider contract offers no signature header. Keep Uvicorn access logging disabled, never log the URL or query string, and return `Cache-Control: no-store` on every callback response.
+- The reward idempotency key is derived from provider, Telegram user id, normalised block id and the second-resolution event timestamp. Retries collapse to one grant. A callback can only redeem a pending `reward_sessions` row created when the bot served an ad; without one it returns `no_session`, so changing the timestamp does not mint a credit. A leaked secret can still redeem another user's pending session, bounded by one session per user/provider/block and the daily cap. Rotate the secret after suspected exposure; per-secret rate limiting and alerting remain open.
+- The pending reward session is the ad cooldown. The bot must create or reuse it before fetching an ad, and must not fetch a second ad while one is pending. Expired sessions are never redeemable.
+- Before opening a session or calling the ad provider, the bot runs an advisory eligibility pre-check (blocked, Premium per `REWARD_PREMIUM_ELIGIBLE`, and the Lagos-day grant cap). Ineligible users get no session row and no ad. The callback repeats every check under the per-user advisory lock and stays authoritative, so a pre-check race can only over-serve an ad, never mint a credit.
+- Log callback database failures by error class only. Never include the exception message or traceback, which may capture request data or the callback secret.
 
 ## 6. Quota and entitlement integrity
 

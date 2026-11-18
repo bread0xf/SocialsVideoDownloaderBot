@@ -2,11 +2,11 @@
 
 > **Authority:** `backend_specs/` is the approved implementation baseline and wins any conflict with this file. This document is the only tracker for what is actually implemented. Do not mark an item complete without code and test references.
 >
-> **Last reviewed:** 2026-11-10.
+> **Last reviewed:** 2026-11-17.
 
 ## Current state
 
-The free-tier pipeline and the standalone v0 bot are implemented. Extraction has been live-verified for public YouTube, TikTok, Instagram and Facebook videos. Telegram delivery is live-confirmed, including title/uploader captions and ID-based filenames; automated live delivery tests are still pending. The system is **not production-ready**: billing, rewarded ads and sponsors do not exist, and controlled egress and tier-specific size/duration enforcement are incomplete.
+The free-tier pipeline and the standalone v0 bot are implemented. Extraction has been live-verified for public YouTube, TikTok, Instagram and Facebook videos. Telegram delivery is live-confirmed, including title/uploader captions and ID-based filenames; automated live delivery tests are still pending. The system is **not production-ready**: billing and sponsors do not exist, and controlled egress and tier-specific size/duration enforcement are incomplete. Adsun ad serving and reward credit granting are implemented behind a disabled feature flag.
 
 The Railway development environment (API + bot + worker + managed Postgres/Redis) is deployed and serving; its status is recorded under [Deployed environments](#deployed-environments).
 
@@ -36,7 +36,9 @@ The Railway development environment (API + bot + worker + managed Postgres/Redis
 | Operational limits | Partial | `backend/core/config.py` | `tests/unit/test_config.py` | Approved global defaults applied; tier-specific size/duration enforcement pending |
 | Sponsor placements | Not started | — | — | Policy approved: Free users only, one placement after successful delivery |
 | Premium payment integration | Not started | — | — | 150 Stars / 30 days and 20/day approved 2026-11-06; no billing module |
-| Rewarded ads | Not started | — | — | Bot-managed chat ads; 1 credit per verified event. Daily cap and expiry open |
+| Rewarded ad serving (Adsun) | Implemented, disabled by default | `backend/ads/`, `apps/bot/main.py` | `tests/unit/test_adsun_provider.py`, `tests/unit/test_bot_reward.py` | `/reward` and a quota-exhausted button serve an ad with HTML parse mode and `protect_content`; no-fill/provider errors fall back safely; `ADSUN_ENABLED=false` by default. Token never logged |
+| Reward credit granting | Implemented, disabled by default | `backend/rewards/`, `backend/api/routes/rewards.py`, `backend/usage/service.py` | `tests/integration/test_rewards.py`, `tests/unit/test_api_rewards.py`, `tests/unit/test_reward_policy.py` | `GET /api/v1/rewards/adsun/callback` verifies the shared secret in constant time, requires an ASCII user id, a normalised configured block and a fresh timestamp, and records each event in `reward_events` before granting. Grants are `usage_ledger` rows (`entry_type=reward_granted`) consumed through `usage_reservations.reward_ledger_id`. A callback can only redeem a pending served-ad session; otherwise it returns `no_session` and grants nothing. Security review added block-form-stable idempotency keys, aware-datetime guards, bounded timestamp parsing, no-store responses, debug-level unconfigured probes, and error logs that omit tracebacks and exception text. Cap/expiry/premium defaults are D-05/D-06/D-07 proposals, not approvals. Uvicorn access logs are disabled because the secret is in the query string |
+| Reward ad sessions (Adsun cooldown) | Implemented, disabled by default | `backend/rewards/service.py`, `backend/database/models.py`, `apps/bot/main.py`, `backend/workers/` | `tests/integration/test_rewards.py`, `tests/unit/test_bot_reward.py` | Before opening a session the bot runs the same advisory eligibility checks as `grant_reward` (blocked, Premium per `REWARD_PREMIUM_ELIGIBLE`, Lagos-day cap including released credits). Ineligible users get a short reason (cap message includes the Africa/Lagos midnight reset) and no session row, and the provider is not called. The bot then creates a `reward_sessions` row before fetching an ad. A second request while one is pending replies "finish the current ad" and does not call the provider. The callback re-runs every check and redeems the pending session in the same transaction as the grant under the per-user advisory lock; expired sessions never redeem. A worker cron expires stale sessions. Structured logs record session created/reused/redeemed/expired, ad skips by reason, and callback `no_session` counters |
 | Sponsor system and Mini App | Deferred | — | — | Later phase |
 
 ## Verification log
@@ -50,6 +52,11 @@ The Railway development environment (API + bot + worker + managed Postgres/Redis
 | 2026-11-09 | Docs consolidation and Railway readiness | Ruff and format passed; mypy passed (59 files); 183 passed, 5 skipped (live extraction gated); Docker image built successfully |
 | 2026-11-10 | Telegram upload fix | Ruff and format passed; mypy passed (59 files); 184 passed, 5 skipped; fake Bot API probe confirmed the uploaded video bytes are byte-identical to the source file |
 | 2026-11-10 | Delivery metadata polish | Ruff and format passed; mypy passed (60 files); 192 passed, 5 skipped; migration adds `media_cache.title`/`uploader` and was applied to a fresh database |
+| 2026-11-17 | Adsun ad serving | Ruff and format passed; mypy passed (63 files); 205 passed, 17 skipped (PostgreSQL and live-extraction tests gated); `adsun[ptb]` added and locked |
+| 2026-11-17 | Adsun reward credit granting | Ruff and format passed; mypy passed (68 files); 246 passed, 5 skipped with PostgreSQL available (live-extraction gated); migration `8b2f4c1d9e70` applied, `alembic check` clean, downgrade/upgrade round-trip verified |
+| 2026-11-17 | Adsun reward security review | Ruff and format passed; mypy passed (69 files); 274 passed, 5 skipped with PostgreSQL available (live-extraction gated). New tests cover concurrent same-event claims, concurrent distinct events at the cap, concurrent commit/release settlement, Lagos-midnight cap reset, no UTC-midnight reset, expired-credit reservation refusal, prefixed-block dedupe, released-credit cap accounting, modified-timestamp replay bound, timestamp overflow, no-traceback error logging and `Cache-Control: no-store`. Migration round-trip re-verified |
+| 2026-11-18 | Adsun reward sessions (ad cooldown) | Ruff and format passed; mypy passed (69 files); 283 passed, 5 skipped with PostgreSQL available (live-extraction gated; 24 of them in `tests/integration/test_rewards.py`). Tests cover valid redeem, replay with a new timestamp returning `no_session`, forged callbacks without a session, an old replay that must not consume a newer session, expired sessions, concurrent callbacks for one session, pending-session cooldown on a new fetch, TTL cleanup, and the existing cap/expiry/Premium rules. Migration `d1c9a7b3e5f2` applied, `alembic check` clean, and a downgrade/upgrade round-trip with a `no_session` probe row verified |
+| 2026-11-18 | Adsun reward eligibility pre-check | Ruff and format passed; mypy passed (69 files); 289 passed, 5 skipped with PostgreSQL available (live-extraction gated; 27 of them in `tests/integration/test_rewards.py`). Bot tests cover capped, Premium-ineligible and blocked users: no provider call, a short reply (the cap reply names the Africa/Lagos midnight), and no session row. Integration tests call `open_reward_ad_session` against PostgreSQL and assert zero `reward_sessions` rows for blocked and Premium users and no new pending row for a capped user. Callback-side checks are unchanged and remain authoritative. `alembic check` clean on a fresh database |
 
 Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` to an isolated database, or let the suite create a temporary database on the server in `DATABASE_URL`. When PostgreSQL is unavailable those tests skip rather than fail.
 
@@ -79,9 +86,11 @@ Live tests are gated by `SVDB_LIVE_EXTRACTION=1`; see `tests/integration/test_li
 3. Add cache-eviction and stale-job reconciliation tests.
 4. Add handler tests for `apps/bot` `/start`, `/help`, `/status` and URL intake.
 5. Add controlled egress or network policy for full DNS-rebinding protection.
-6. Implement billing, rewarded ads and sponsor placements according to `backend_specs/docs/05`.
-7. Resolve the reward daily cap and credit expiry (D-05, D-06).
-8. Fix role-specific production configuration validation before any production deployment: today `APP_ENV=production` requires a Telegram token for every process, including the API.
+6. Implement billing and sponsor placements according to `backend_specs/docs/05`; the Adsun ad-serving and reward-credit halves are done and must stay flag-disabled until the open decisions and provider contract are approved.
+7. Approve the reward daily cap, credit expiry and Premium eligibility (D-05, D-06, D-07); current values are configuration defaults from `docs/adsun-plan.md`, not approvals.
+8. Add a reward-granted notification/outbox event and a credit-expiry worker job; today expired credits are merely excluded from the balance.
+9. Fix role-specific production configuration validation before any production deployment: today `APP_ENV=production` requires a Telegram token for every process, including the API.
+10. Reward callback residual risks: the shared secret is static and travels in the query string, so a leak lets an attacker redeem any user's currently pending ad session (at most one per user, provider and block) and still bounds minting by `REWARD_DAILY_CAP` per Lagos day. A callback with no pending session returns `no_session`, so a replayed old timestamp cannot mint by itself. There is no per-secret rate limit or alerting yet. The callback idempotency key is second-resolution, so two genuine completions in the same second collapse into one grant. Rotate `ADSUN_REWARD_SECRET` after any suspected exposure and exclude the query string from any proxy or error-capture integration.
 
 ## Decisions
 

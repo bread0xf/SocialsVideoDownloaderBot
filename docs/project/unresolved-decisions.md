@@ -8,10 +8,10 @@ Do not silently decide these on behalf of the project owner.
 
 | ID | Decision | Current direction | Needed before |
 |---|---|---|---|
-| D-04 | Rewarded-ad delivery mechanism | Bot-managed chat/sponsor message is chosen; single-use server token vs. third-party postback still open | Reward feature |
-| D-05 | Reward daily cap | Proposed 10 rewarded downloads per user per Lagos day | Reward feature |
-| D-06 | Reward credit expiry | One ad = one extra download; proposed expiry at the end of the Lagos quota day earned | Reward feature |
-| D-07 | Premium reward eligibility | Proposed: not eligible, because Premium excludes sponsor placements | Reward feature |
+| D-04 | Rewarded-ad delivery mechanism | Bot-managed chat/sponsor message plus the Adsun server GET callback are implemented; single-use server token vs. third-party postback remains open | Reward feature |
+| D-05 | Reward daily cap | Implemented as `REWARD_DAILY_CAP=10` (proposal, not approved) | Reward feature |
+| D-06 | Reward credit expiry | Implemented as `REWARD_CREDIT_EXPIRY=end_of_quota_day` (proposal, not approved); `ttl` is available | Reward feature |
+| D-07 | Premium reward eligibility | Implemented as `REWARD_PREMIUM_ELIGIBLE=false` (proposal, not approved) | Reward feature |
 | D-09 | Premium priority semantics | Higher processing priority proposed | Queue implementation |
 | D-12 | Production hosting provider and region | Railway is used for development only; production host is not chosen | Production deployment |
 | D-13 | Webhook vs long polling | Long polling is implemented for the MVP; webhook mode is not | Bot deployment |

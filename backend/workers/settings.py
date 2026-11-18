@@ -8,6 +8,7 @@ from backend.core.config import get_settings
 from backend.workers.tasks import (
     cleanup_cache,
     dispatch_outbox,
+    expire_reward_sessions,
     process_download,
     reconcile_stale_jobs,
     worker_shutdown,
@@ -53,6 +54,7 @@ class WorkerSettings(WorkerSettingsBase):
         process_download,
         dispatch_outbox,
         cleanup_cache,
+        expire_reward_sessions,
         reconcile_stale_jobs,
     ]
     cron_jobs = [
@@ -63,6 +65,13 @@ class WorkerSettings(WorkerSettingsBase):
             second=0,
             run_at_startup=True,
             timeout=300,
+        ),
+        cron(
+            expire_reward_sessions,
+            minute=_minutes_set(300),
+            second=0,
+            run_at_startup=True,
+            timeout=60,
         ),
         cron(
             reconcile_stale_jobs,

@@ -9,14 +9,18 @@ from backend.core.errors import AppError, ErrorCode
 from backend.core.quota import quota_period_start
 from backend.database.models import UsageLedger, UsageReservation
 from backend.entitlements.service import Entitlement
+from backend.rewards.service import reserve_reward_credit
+from backend.usage.locking import lock_user_quota
 
 _ACTIVE_RESERVATION_STATUSES = ("reserved", "committed")
 
-
-async def lock_user_quota(session: AsyncSession, user_id: uuid.UUID) -> None:
-    await session.execute(
-        select(func.pg_advisory_xact_lock(func.hashtextextended(str(user_id), 0)))
-    )
+__all__ = [
+    "commit_quota",
+    "included_usage",
+    "lock_user_quota",
+    "release_quota",
+    "reserve_quota",
+]
 
 
 async def included_usage(
@@ -63,24 +67,33 @@ async def reserve_quota(
         )
 
     used = await included_usage(session, user_id, entitlement, now=now)
-    if used >= limit:
-        raise AppError(
-            ErrorCode.QUOTA_EXHAUSTED,
-            "You have used today's free downloads. Try again after midnight in Lagos.",
+    if used < limit:
+        reservation = UsageReservation(
+            user_id=user_id,
+            download_job_id=download_job_id,
+            quota_period_start=quota_period_start(now),
+            source=entitlement.quota_source,
+            status="reserved",
+            reserved_at=now,
+            created_at=now,
         )
+        session.add(reservation)
+        await session.flush()
+        return reservation
 
-    reservation = UsageReservation(
+    reward_reservation = await reserve_reward_credit(
+        session,
         user_id=user_id,
         download_job_id=download_job_id,
-        quota_period_start=quota_period_start(now),
-        source=entitlement.quota_source,
-        status="reserved",
-        reserved_at=now,
-        created_at=now,
+        now=now,
     )
-    session.add(reservation)
-    await session.flush()
-    return reservation
+    if reward_reservation is not None:
+        return reward_reservation
+
+    raise AppError(
+        ErrorCode.QUOTA_EXHAUSTED,
+        "You have used today's free downloads. Try again after midnight in Lagos.",
+    )
 
 
 async def commit_quota(
