@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     adsun_reward_secret: SecretStr = SecretStr("")
     adsun_callback_max_age_seconds: int = Field(default=900, ge=1)
     adsun_callback_future_skew_seconds: int = Field(default=60, ge=0)
+    # TEMPORARY staging-only capture route. Remove the route before production;
+    # this flag must stay false outside a controlled staging experiment.
+    adsun_capture_enabled: bool = False
 
     # Reward credit policy. D-05/D-06/D-07 defaults are proposals in the plan,
     # not approved product values.

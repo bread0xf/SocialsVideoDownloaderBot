@@ -59,11 +59,71 @@ def _reject(reason: str, *, status_code: int, body: str) -> PlainTextResponse:
     # Only the stable reason code is logged. Never the query string or URL: it
     # carries the shared secret. An unconfigured endpoint is not an incident, so
     # do not let unauthenticated probes flood the warning stream.
-    if reason == "not_configured":
+    if reason in {"not_configured", "capture_disabled"}:
         logger.debug("reward_callback_rejected", provider="adsun", reason=reason)
     else:
         logger.warning("reward_callback_rejected", provider="adsun", reason=reason)
     return _plain(body, status_code=status_code)
+
+
+# TEMPORARY staging capture state. In-process only: the first authenticated
+# request per (userid, block) fails with 500 and later ones succeed, so Adsun's
+# retry cadence can be observed. Remove this route before production.
+_CAPTURED_KEYS: set[tuple[str, str]] = set()
+_CAPTURE_SECRET_PARAMS = frozenset({"secret", "token", "api_key", "apikey", "authorization"})
+
+
+def _is_secret_param(name: str) -> bool:
+    lowered = name.lower()
+    return lowered in _CAPTURE_SECRET_PARAMS or "secret" in lowered or "token" in lowered
+
+
+def _reset_capture_state() -> None:
+    """Test helper for the process-local capture state."""
+    _CAPTURED_KEYS.clear()
+
+
+@router.get("/adsun/capture", response_class=PlainTextResponse, include_in_schema=False)
+async def adsun_capture(request: Request) -> PlainTextResponse:
+    """TEMPORARY staging-only probe: log parameter names and retry behaviour.
+
+    Must be removed before production. The query string carries the shared
+    secret, so only parameter names and non-secret values are logged.
+    """
+    settings: Settings = request.app.state.settings
+    if (
+        not settings.adsun_capture_enabled
+        or settings.app_env == "production"
+        or not settings.adsun_callback_configured
+    ):
+        return _reject("capture_disabled", status_code=404, body="Not found")
+
+    query = request.query_params
+    received_secret = query.get("secret", "")
+    if not verify_secret(received_secret, settings.adsun_reward_secret_value):
+        return _reject("bad_secret", status_code=403, body="Forbidden")
+
+    received_at = datetime.now(UTC)
+    user_id = query.get("userid") or query.get("user") or ""
+    block = query.get("block") or ""
+    key = (user_id, block)
+    first_call = key not in _CAPTURED_KEYS
+    if first_call:
+        _CAPTURED_KEYS.add(key)
+
+    logger.info(
+        "adsun_capture",
+        provider="adsun",
+        params=list(query.keys()),
+        values={name: value for name, value in query.items() if not _is_secret_param(name)},
+        received_at=received_at.isoformat(),
+        first_call=first_call,
+    )
+
+    # Fail the first attempt per key so the provider retries, then succeed.
+    if first_call:
+        return _plain("Internal error", status_code=500)
+    return _plain("ok", status_code=200)
 
 
 @router.get("/adsun/callback", response_class=PlainTextResponse)

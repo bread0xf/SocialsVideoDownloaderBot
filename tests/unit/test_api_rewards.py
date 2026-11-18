@@ -22,6 +22,11 @@ def _do_not_reconfigure_global_logging(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("backend.api.app.configure_logging", lambda *args, **kwargs: None)
 
 
+@pytest.fixture(autouse=True)
+def _reset_capture_state() -> None:
+    rewards_route._reset_capture_state()
+
+
 def _settings(**overrides: object) -> Settings:
     values: dict[str, object] = {
         "app_env": "test",
@@ -275,3 +280,103 @@ def test_uvicorn_access_log_is_disabled(monkeypatch: pytest.MonkeyPatch) -> None
     api_main.main()
 
     assert recorded["kwargs"]["access_log"] is False
+
+
+CAPTURE_PATH = "/api/v1/rewards/adsun/capture"
+
+
+def _capture_url(
+    *,
+    user_id: int = 12345,
+    block: str = BLOCK,
+    secret: str = SECRET,
+    ts: int = 1_700_000_000,
+    **extra: str,
+) -> str:
+    params = {
+        "userid": str(user_id),
+        "block": block,
+        "secret": secret,
+        "ts": str(ts),
+        **extra,
+    }
+    query = "&".join(f"{key}={value}" for key, value in params.items())
+    return f"{CAPTURE_PATH}?{query}"
+
+
+async def test_capture_is_disabled_by_default() -> None:
+    assert _settings().adsun_capture_enabled is False
+
+    async with _client(_settings()) as client:
+        response = await client.get(_capture_url())
+
+    assert response.status_code == 404
+    assert response.text == "Not found"
+
+
+async def test_capture_is_hidden_in_production_even_when_enabled() -> None:
+    async with _client(
+        _settings(
+            app_env="production",
+            adsun_capture_enabled=True,
+            telegram_bot_token="123456:test-token",
+        )
+    ) as client:
+        response = await client.get(_capture_url())
+
+    assert response.status_code == 404
+
+
+async def test_capture_rejects_a_bad_secret() -> None:
+    async with _client(_settings(adsun_capture_enabled=True)) as client:
+        response = await client.get(_capture_url(secret="wrong-secret-value"))
+
+    assert response.status_code == 403
+    assert response.text == "Forbidden"
+
+
+async def test_capture_logs_names_and_non_secret_values_and_fails_once_per_pair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recording = _RecordingLogger()
+    monkeypatch.setattr(rewards_route, "logger", recording)
+
+    async with _client(_settings(adsun_capture_enabled=True)) as client:
+        first = await client.get(_capture_url(extra="hello"))
+        second = await client.get(_capture_url(extra="hello"))
+        other_user = await client.get(_capture_url(user_id=67890))
+        other_block = await client.get(_capture_url(user_id=67890, block="50002"))
+        retry_other_block = await client.get(_capture_url(user_id=67890, block="50002"))
+
+    assert [first.status_code, second.status_code] == [500, 200]
+    assert [other_user.status_code, other_block.status_code, retry_other_block.status_code] == [
+        500,
+        500,
+        200,
+    ]
+
+    events = [call[2] for call in recording.calls if call[1] == "adsun_capture"]
+    assert len(events) == 5
+
+    first_event = events[0]
+    assert set(first_event["params"]) == {"userid", "block", "secret", "ts", "extra"}
+    assert first_event["values"] == {
+        "userid": "12345",
+        "block": BLOCK,
+        "ts": "1700000000",
+        "extra": "hello",
+    }
+    assert "secret" not in first_event["values"]
+    assert SECRET not in repr(first_event)
+    assert "wrong-secret-value" not in repr(first_event)
+    assert first_event["received_at"]
+    assert first_event["first_call"] is True
+
+    assert [event["first_call"] for event in events] == [
+        True,
+        False,
+        True,
+        True,
+        False,
+    ]
+    assert all(event["received_at"] for event in events)
