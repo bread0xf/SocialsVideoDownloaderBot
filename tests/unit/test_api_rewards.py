@@ -15,6 +15,9 @@ from backend.rewards.service import RewardGrantResult
 SECRET = "s" * 40
 BLOCK = "50001"
 PATH = "/api/v1/rewards/adsun/callback"
+ALIAS_PATH = "/api/v1/hooks/r1/cb"
+CAPTURE_PATH = "/api/v1/rewards/adsun/capture"
+ALIAS_CAPTURE_PATH = "/api/v1/hooks/r1/probe"
 
 
 @pytest.fixture(autouse=True)
@@ -61,7 +64,7 @@ async def _fake_scope(_factory: object) -> AsyncIterator[object]:
     yield object()
 
 
-def _url(**params: str | int) -> str:
+def _url(*, path: str = PATH, **params: str | int) -> str:
     defaults: dict[str, str | int] = {
         "userid": 12345,
         "block": BLOCK,
@@ -267,6 +270,55 @@ async def test_route_never_logs_the_callback_secret(
     assert all(SECRET not in repr(call) for call in recording.calls)
 
 
+@pytest.mark.parametrize("value", ["1", "true", "TRUE"])
+async def test_test_callback_returns_200_without_processing(
+    value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recording = _RecordingLogger()
+    monkeypatch.setattr(rewards_route, "logger", recording)
+
+    async with _client(_settings()) as client:
+        response = await client.get(_url(test=value))
+
+    assert response.status_code == 200
+    assert response.text == '{"status":"test"}'
+    assert response.headers["cache-control"] == "no-store"
+
+    events = [call[2] for call in recording.calls if call[1] == "reward_callback_test"]
+    assert len(events) == 1
+    assert set(events[0]["params"]) == {"userid", "block", "secret", "ts", "test"}
+    assert "values" not in events[0]
+    assert all(SECRET not in repr(call) for call in recording.calls)
+
+
+async def test_test_callback_with_a_bad_secret_returns_403() -> None:
+    async with _client(_settings()) as client:
+        response = await client.get(_url(test="1", secret="wrong-secret-value"))
+
+    assert response.status_code == 403
+    assert response.text == "Forbidden"
+
+
+async def test_normal_callback_is_unaffected_by_the_test_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(rewards_route, "session_scope", _fake_scope)
+    calls: list[dict[str, Any]] = []
+
+    async def _grant(*args: Any, **kwargs: Any) -> RewardGrantResult:
+        calls.append(kwargs)
+        return RewardGrantResult(status="accepted", credits_granted=1)
+
+    monkeypatch.setattr(rewards_route, "grant_reward", _grant)
+
+    async with _app_client(_settings()) as client:
+        response = await client.get(_url())
+
+    assert response.status_code == 200
+    assert response.text == "accepted"
+    assert len(calls) == 1
+
+
 def test_uvicorn_access_log_is_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     recorded: dict[str, Any] = {}
 
@@ -282,11 +334,9 @@ def test_uvicorn_access_log_is_disabled(monkeypatch: pytest.MonkeyPatch) -> None
     assert recorded["kwargs"]["access_log"] is False
 
 
-CAPTURE_PATH = "/api/v1/rewards/adsun/capture"
-
-
 def _capture_url(
     *,
+    path: str = CAPTURE_PATH,
     user_id: int = 12345,
     block: str = BLOCK,
     secret: str = SECRET,
@@ -380,3 +430,147 @@ async def test_capture_logs_names_and_non_secret_values_and_fails_once_per_pair(
         False,
     ]
     assert all(event["received_at"] for event in events)
+
+
+async def test_capture_test_callback_returns_200_and_does_not_consume_first_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recording = _RecordingLogger()
+    monkeypatch.setattr(rewards_route, "logger", recording)
+
+    async with _client(_settings(adsun_capture_enabled=True)) as client:
+        test_response = await client.get(_capture_url(test="1"))
+        first = await client.get(_capture_url())
+        second = await client.get(_capture_url())
+
+    assert test_response.status_code == 200
+    assert test_response.text == '{"status":"test"}'
+    assert test_response.headers["cache-control"] == "no-store"
+    assert [first.status_code, second.status_code] == [500, 200]
+
+    capture_events = [call[2] for call in recording.calls if call[1] == "adsun_capture"]
+    assert len(capture_events) == 3
+    assert capture_events[0]["values"]["test"] == "1"
+    assert capture_events[0]["first_call"] is False
+    assert capture_events[1]["first_call"] is True
+    assert capture_events[2]["first_call"] is False
+
+    test_events = [call[2] for call in recording.calls if call[1] == "reward_callback_test"]
+    assert len(test_events) == 1
+    assert "test" in test_events[0]["params"]
+    assert all(SECRET not in repr(call) for call in recording.calls)
+
+
+async def test_alias_callback_rejects_a_bad_secret() -> None:
+    async with _client(_settings()) as client:
+        response = await client.get(_url(path=ALIAS_PATH, secret="wrong-secret-value"))
+
+    assert response.status_code == 403
+    assert response.text == "Forbidden"
+    assert response.headers["cache-control"] == "no-store"
+
+
+async def test_alias_callback_is_404_when_the_feature_is_disabled() -> None:
+    async with _client(_settings(adsun_enabled=False)) as client:
+        response = await client.get(_url(path=ALIAS_PATH))
+
+    assert response.status_code == 404
+    assert response.text == "Not found"
+
+
+@pytest.mark.parametrize("value", ["1", "true"])
+async def test_alias_test_callback_returns_200_without_granting(
+    value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recording = _RecordingLogger()
+    monkeypatch.setattr(rewards_route, "logger", recording)
+
+    async def _must_not_grant(*args: Any, **kwargs: Any) -> RewardGrantResult:
+        raise AssertionError("test callbacks must not reach the grant path")
+
+    monkeypatch.setattr(rewards_route, "grant_reward", _must_not_grant)
+
+    async with _client(_settings()) as client:
+        response = await client.get(_url(path=ALIAS_PATH, test=value))
+
+    assert response.status_code == 200
+    assert response.text == '{"status":"test"}'
+    assert response.headers["cache-control"] == "no-store"
+
+    events = [call[2] for call in recording.calls if call[1] == "reward_callback_test"]
+    assert len(events) == 1
+    assert set(events[0]["params"]) == {"userid", "block", "secret", "ts", "test"}
+    assert "values" not in events[0]
+    assert all(SECRET not in repr(call) for call in recording.calls)
+
+
+async def test_alias_capture_is_disabled_by_default() -> None:
+    async with _client(_settings()) as client:
+        response = await client.get(_capture_url(path=ALIAS_CAPTURE_PATH))
+
+    assert response.status_code == 404
+    assert response.text == "Not found"
+
+
+async def test_alias_capture_is_hidden_in_production_even_when_enabled() -> None:
+    async with _client(
+        _settings(
+            app_env="production",
+            adsun_capture_enabled=True,
+            telegram_bot_token="123456:test-token",
+        )
+    ) as client:
+        response = await client.get(_capture_url(path=ALIAS_CAPTURE_PATH))
+
+    assert response.status_code == 404
+
+
+async def test_alias_capture_rejects_a_bad_secret() -> None:
+    async with _client(_settings(adsun_capture_enabled=True)) as client:
+        response = await client.get(
+            _capture_url(path=ALIAS_CAPTURE_PATH, secret="wrong-secret-value")
+        )
+
+    assert response.status_code == 403
+    assert response.text == "Forbidden"
+
+
+async def test_alias_capture_fails_once_per_pair_then_succeeds() -> None:
+    async with _client(_settings(adsun_capture_enabled=True)) as client:
+        first = await client.get(_capture_url(path=ALIAS_CAPTURE_PATH))
+        second = await client.get(_capture_url(path=ALIAS_CAPTURE_PATH))
+        other_pair = await client.get(_capture_url(path=ALIAS_CAPTURE_PATH, user_id=67890))
+
+    assert [first.status_code, second.status_code] == [500, 200]
+    assert first.headers["cache-control"] == "no-store"
+    assert second.text == "ok"
+    assert other_pair.status_code == 500
+
+
+async def test_alias_capture_test_callback_does_not_consume_first_call() -> None:
+    async with _client(_settings(adsun_capture_enabled=True)) as client:
+        test_response = await client.get(_capture_url(path=ALIAS_CAPTURE_PATH, test="1"))
+        first = await client.get(_capture_url(path=ALIAS_CAPTURE_PATH))
+        second = await client.get(_capture_url(path=ALIAS_CAPTURE_PATH))
+
+    assert test_response.status_code == 200
+    assert test_response.text == '{"status":"test"}'
+    assert test_response.headers["cache-control"] == "no-store"
+    assert [first.status_code, second.status_code] == [500, 200]
+
+
+def test_alias_routes_reuse_the_original_handler_functions() -> None:
+    original = {route.path: route.endpoint for route in rewards_route.router.routes}
+    aliases = {route.path: route.endpoint for route in rewards_route.alias_router.routes}
+
+    assert aliases[ALIAS_PATH] is original[PATH]
+    assert aliases[ALIAS_CAPTURE_PATH] is original[CAPTURE_PATH]
+
+
+def test_alias_routes_are_hidden_from_the_openapi_schema() -> None:
+    schema_paths = create_app(_settings()).openapi()["paths"]
+
+    assert ALIAS_PATH not in schema_paths
+    assert ALIAS_CAPTURE_PATH not in schema_paths
+    assert PATH in schema_paths
+    assert CAPTURE_PATH not in schema_paths

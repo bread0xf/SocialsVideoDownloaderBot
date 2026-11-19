@@ -38,6 +38,8 @@ from backend.usage.service import commit_quota, release_quota, reserve_quota
 
 SECRET = "s" * 40
 BLOCK = "50001"
+CALLBACK_PATH = "/api/v1/rewards/adsun/callback"
+ALIAS_CALLBACK_PATH = "/api/v1/hooks/r1/cb"
 
 
 @pytest.fixture(autouse=True)
@@ -62,8 +64,15 @@ def _settings(**overrides: object) -> Settings:
     return Settings(_env_file=None, **values)
 
 
-def _callback_url(*, user_id: int, ts: int, block: str = BLOCK, secret: str = SECRET) -> str:
-    return f"/api/v1/rewards/adsun/callback?userid={user_id}&block={block}&secret={secret}&ts={ts}"
+def _callback_url(
+    *,
+    user_id: int,
+    ts: int,
+    block: str = BLOCK,
+    secret: str = SECRET,
+    path: str = CALLBACK_PATH,
+) -> str:
+    return f"{path}?userid={user_id}&block={block}&secret={secret}&ts={ts}"
 
 
 def _app_client(
@@ -195,8 +204,9 @@ async def _grant_status(
         return result.status
 
 
+@pytest.mark.parametrize("path", [CALLBACK_PATH, ALIAS_CALLBACK_PATH])
 async def test_valid_callback_redeems_the_session_and_grants_one_credit(
-    session_factory: async_sessionmaker[AsyncSession], plans: None
+    path: str, session_factory: async_sessionmaker[AsyncSession], plans: None
 ) -> None:
     now = datetime.now(UTC)
     async with session_factory() as session:
@@ -208,7 +218,7 @@ async def test_valid_callback_redeems_the_session_and_grants_one_credit(
 
     ts = int(now.timestamp())
     async with _app_client(_settings(), session_factory) as client:
-        response = await client.get(_callback_url(user_id=telegram_user_id, ts=ts))
+        response = await client.get(_callback_url(user_id=telegram_user_id, ts=ts, path=path))
 
     assert response.status_code == 200
     assert response.text == "accepted"
@@ -245,6 +255,35 @@ async def test_valid_callback_redeems_the_session_and_grants_one_credit(
         assert reward_session is not None
         assert reward_session.status == REWARD_SESSION_REDEEMED
         assert reward_session.redeemed_event_id == event.id
+
+
+@pytest.mark.parametrize("path", [CALLBACK_PATH, ALIAS_CALLBACK_PATH])
+async def test_test_callback_returns_200_and_changes_no_rows(
+    path: str, session_factory: async_sessionmaker[AsyncSession], plans: None
+) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session:
+        user = await _user(session)
+        opened = await _open_session(session, user, now=now)
+        await session.commit()
+        telegram_user_id = user.telegram_user_id
+
+    ts = int(now.timestamp())
+    async with _app_client(_settings(), session_factory) as client:
+        response = await client.get(
+            _callback_url(user_id=telegram_user_id, ts=ts, path=path) + "&test=1"
+        )
+
+    assert response.status_code == 200
+    assert response.text == '{"status":"test"}'
+    assert response.headers["cache-control"] == "no-store"
+
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count(RewardEvent.id))) == 0
+        assert await session.scalar(select(func.count(UsageLedger.id))) == 0
+        reward_session = await session.get(RewardSession, opened.session_id)
+        assert reward_session is not None
+        assert reward_session.status == REWARD_SESSION_PENDING
 
 
 async def test_duplicate_callback_does_not_double_credit(

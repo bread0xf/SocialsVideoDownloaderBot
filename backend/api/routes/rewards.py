@@ -66,6 +66,20 @@ def _reject(reason: str, *, status_code: int, body: str) -> PlainTextResponse:
     return _plain(body, status_code=status_code)
 
 
+_TEST_CALLBACK_BODY = '{"status":"test"}'
+
+
+def _is_test_callback(query: Mapping[str, str]) -> bool:
+    """Adsun marks probe callbacks with ``test=1`` (or ``test=true``)."""
+    return _first_value(query, "test").strip().lower() in {"1", "true"}
+
+
+def _log_test_callback(query: Mapping[str, str]) -> None:
+    # Names only: values may include identifiers, and the secret name is safe to
+    # list while its value must never be logged.
+    logger.info("reward_callback_test", provider="adsun", params=list(query.keys()))
+
+
 # TEMPORARY staging capture state. In-process only: the first authenticated
 # request per (userid, block) fails with 500 and later ones succeed, so Adsun's
 # retry cadence can be observed. Remove this route before production.
@@ -104,12 +118,19 @@ async def adsun_capture(request: Request) -> PlainTextResponse:
         return _reject("bad_secret", status_code=403, body="Forbidden")
 
     received_at = datetime.now(UTC)
+    is_test = _is_test_callback(query)
+    if is_test:
+        _log_test_callback(query)
+
     user_id = query.get("userid") or query.get("user") or ""
     block = query.get("block") or ""
     key = (user_id, block)
-    first_call = key not in _CAPTURED_KEYS
-    if first_call:
-        _CAPTURED_KEYS.add(key)
+    # Test probes must not consume the pair's first-call state.
+    first_call = False
+    if not is_test:
+        first_call = key not in _CAPTURED_KEYS
+        if first_call:
+            _CAPTURED_KEYS.add(key)
 
     logger.info(
         "adsun_capture",
@@ -120,6 +141,8 @@ async def adsun_capture(request: Request) -> PlainTextResponse:
         first_call=first_call,
     )
 
+    if is_test:
+        return _plain(_TEST_CALLBACK_BODY, status_code=200)
     # Fail the first attempt per key so the provider retries, then succeed.
     if first_call:
         return _plain("Internal error", status_code=500)
@@ -142,6 +165,12 @@ async def adsun_reward_callback(request: Request) -> PlainTextResponse:
     received_secret = query.get("secret", "")
     if not verify_secret(received_secret, settings.adsun_reward_secret_value):
         return _reject("bad_secret", status_code=403, body="Forbidden")
+
+    # Adsun test probes must be acknowledged without touching the ledger, the
+    # claim table or any pending session.
+    if _is_test_callback(query):
+        _log_test_callback(query)
+        return _plain(_TEST_CALLBACK_BODY, status_code=200)
 
     parsed = parse_reward_callback(query)
     if parsed is None:
@@ -194,3 +223,29 @@ async def adsun_reward_callback(request: Request) -> PlainTextResponse:
 
     logger.info("reward_callback_processed", provider="adsun", status=result.status)
     return _plain(result.status, status_code=200)
+
+
+# Adsun's panel switches the Reward URL to "Use Adsun Rewards URL" whenever the
+# path contains "rewards/adsun", which would bypass our secret check. The same
+# handler objects are therefore also mounted on a neutral path. Nothing is
+# copied: the aliases call exactly the functions above, so every guard, log
+# rule and response body is shared. Both aliases stay out of the OpenAPI schema
+# and out of the request logs (Uvicorn access logs are disabled because the
+# secret travels in the query string).
+alias_router = APIRouter(prefix="/api/v1/hooks/r1", include_in_schema=False)
+alias_router.add_api_route(
+    "/probe",
+    adsun_capture,
+    methods=["GET"],
+    response_class=PlainTextResponse,
+    include_in_schema=False,
+    name="adsun_capture_alias",
+)
+alias_router.add_api_route(
+    "/cb",
+    adsun_reward_callback,
+    methods=["GET"],
+    response_class=PlainTextResponse,
+    include_in_schema=False,
+    name="adsun_reward_callback_alias",
+)

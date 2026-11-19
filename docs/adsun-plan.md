@@ -380,6 +380,8 @@ Modify `backend/usage/service.py`:
 
 New route: `GET /api/v1/rewards/adsun/callback`.
 
+The same handlers are also mounted under neutral aliases, `GET /api/v1/hooks/r1/cb` (callback) and `GET /api/v1/hooks/r1/probe` (temporary capture route). Adsun's panel switches a block to "Use Adsun Rewards URL" whenever the Reward URL path contains `rewards/adsun`, which would bypass the shared-secret check, so the neutral paths are the ones to paste into the panel. The aliases reuse the same handler functions, stay hidden from OpenAPI, and keep every guard identical. The original `/api/v1/rewards/adsun/*` paths remain available for compatibility.
+
 This is a deliberate deviation from the generic `POST /api/v1/rewards/callback` in `backend_specs/docs/03`: Adsun uses GET and the route is provider-specific. The generic route can be added later if another provider needs POST.
 
 Processing order:
@@ -387,6 +389,7 @@ Processing order:
 1. If `ADSUN_ENABLED=false` or no callback secret is configured, return `404` without detail.
 2. Read the query parameters. Do not log the query string.
 3. Verify `secret` with `hmac.compare_digest` (use `adsun.verify_secret` or an equivalent local helper). Invalid → `403`.
+3a. If `test=1` or `test=true`, log `reward_callback_test` with parameter names only and return `200` with `{"status":"test"}`. Do not parse the payload, insert a claim, redeem a session or grant credit.
 4. Parse with `adsun.parse_reward_callback` (secret already verified) and apply our stricter checks:
    - `userid`/`user` must be ASCII digits and a positive 64-bit integer.
    - `block` must be present and equal the configured normalized block ID.
