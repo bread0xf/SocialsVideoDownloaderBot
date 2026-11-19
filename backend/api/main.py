@@ -10,4 +10,7 @@ def main() -> None:
         host="0.0.0.0",  # noqa: S104 - container must listen on all interfaces
         port=settings.port,
         log_level=settings.log_level.lower(),
+        # The Adsun reward secret travels in the callback query string. Access
+        # logs would write it verbatim, so they must stay off.
+        access_log=False,
     )

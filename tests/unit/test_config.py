@@ -99,3 +99,106 @@ def test_port_default_and_override(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert Settings(_env_file=None, app_env="test").port == 8000
     assert Settings(_env_file=None, app_env="test", port=9090).port == 9090
+
+
+def test_adsun_defaults_are_disabled() -> None:
+    settings = Settings(_env_file=None, app_env="test")
+
+    assert settings.adsun_enabled is False
+    assert settings.adsun_account_token == ""
+    assert settings.adsun_block_id == ""
+    assert settings.adsun_configured is False
+
+
+def test_adsun_block_id_is_normalised() -> None:
+    for raw in ("50001", " bot-50001 ", "TW-50001"):
+        settings = Settings(_env_file=None, app_env="test", adsun_block_id=raw)
+
+        assert settings.adsun_block_id == "50001"
+
+
+def test_adsun_block_id_rejects_non_numeric_values() -> None:
+    for raw in ("abc", "bot-", "٥٠٠٠١"):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, app_env="test", adsun_block_id=raw)
+
+
+def test_adsun_configured_requires_enabled_token_and_block() -> None:
+    configured = Settings(
+        _env_file=None,
+        app_env="test",
+        adsun_enabled=True,
+        adsun_token="token",
+        adsun_block_id="50001",
+    )
+    missing_token = Settings(
+        _env_file=None,
+        app_env="test",
+        adsun_enabled=True,
+        adsun_block_id="50001",
+    )
+
+    assert configured.adsun_configured is True
+    assert missing_token.adsun_configured is False
+
+
+def test_reward_defaults_follow_the_proposed_plan_values() -> None:
+    settings = Settings(_env_file=None, app_env="test")
+
+    assert settings.reward_daily_cap == 10
+    assert settings.reward_credit_expiry == "end_of_quota_day"
+    assert settings.reward_credit_ttl_seconds is None
+    assert settings.reward_premium_eligible is False
+    assert settings.reward_session_ttl_seconds == 900
+    assert settings.adsun_callback_max_age_seconds == 900
+    assert settings.adsun_callback_future_skew_seconds == 60
+
+
+def test_reward_callback_secret_must_be_long_enough_when_set() -> None:
+    accepted = Settings(_env_file=None, app_env="test", adsun_reward_secret="s" * 32)
+
+    assert accepted.adsun_reward_secret_value == "s" * 32
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, app_env="test", adsun_reward_secret="short")
+
+
+def test_callback_configuration_needs_enabled_secret_and_block() -> None:
+    complete = Settings(
+        _env_file=None,
+        app_env="test",
+        adsun_enabled=True,
+        adsun_block_id="50001",
+        adsun_reward_secret="s" * 32,
+    )
+    no_secret = Settings(
+        _env_file=None,
+        app_env="test",
+        adsun_enabled=True,
+        adsun_block_id="50001",
+    )
+    disabled = Settings(
+        _env_file=None,
+        app_env="test",
+        adsun_block_id="50001",
+        adsun_reward_secret="s" * 32,
+    )
+
+    assert complete.adsun_callback_configured is True
+    assert no_secret.adsun_callback_configured is False
+    assert disabled.adsun_callback_configured is False
+
+
+def test_ttl_expiry_without_ttl_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, app_env="test", reward_credit_expiry="ttl")
+
+    configured = Settings(
+        _env_file=None,
+        app_env="test",
+        reward_credit_expiry="ttl",
+        reward_credit_ttl_seconds=3600,
+    )
+
+    assert configured.reward_credit_expiry == "ttl"
+    assert configured.reward_credit_ttl_seconds == 3600

@@ -153,6 +153,9 @@ class UsageReservation(Base):
     quota_period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     source: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
+    reward_ledger_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("usage_ledger.id", ondelete="RESTRICT")
+    )
     reserved_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -165,6 +168,16 @@ class UsageReservation(Base):
     __table_args__ = (
         Index(
             "ix_usage_reservations_user_period_status", "user_id", "quota_period_start", "status"
+        ),
+        Index(
+            "uq_usage_reservations_reward_ledger_active",
+            "reward_ledger_id",
+            unique=True,
+            postgresql_where=text("reward_ledger_id IS NOT NULL AND status <> 'released'"),
+        ),
+        CheckConstraint(
+            "source <> 'reward_credit' OR reward_ledger_id IS NOT NULL",
+            name="usage_reservations_reward_credit_link",
         ),
     )
 
@@ -183,6 +196,7 @@ class UsageLedger(Base):
     source: Mapped[str] = mapped_column(String(32), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     quota_period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     idempotency_key: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -191,6 +205,99 @@ class UsageLedger(Base):
     __table_args__ = (
         Index("ix_usage_ledger_user_period_source", "user_id", "quota_period_start", "source"),
         Index("ix_usage_ledger_user_created_at", "user_id", "created_at"),
+        Index("ix_usage_ledger_user_entry_type_created_at", "user_id", "entry_type", "created_at"),
+    )
+
+
+class RewardEvent(Base):
+    """Durable record of a provider reward callback.
+
+    The unique ``(provider, provider_transaction_id)`` pair is the replay guard:
+    Adsun retries cannot grant a second credit for the same event. ``user_id`` is
+    null when the callback arrives for an unknown Telegram account.
+    """
+
+    __tablename__ = "reward_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_transaction_id: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    telegram_user_id: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    block_id: Mapped[str | None] = mapped_column(String(32))
+    provider_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason_code: Mapped[str | None] = mapped_column(String(64))
+    credits_granted: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index(
+            "uq_reward_events_provider_transaction",
+            "provider",
+            "provider_transaction_id",
+            unique=True,
+        ),
+        Index("ix_reward_events_telegram_user_received", "telegram_user_id", "received_at"),
+        Index("ix_reward_events_user_received", "user_id", "received_at"),
+        CheckConstraint("credits_granted >= 0", name="reward_events_credits_nonnegative"),
+        CheckConstraint(
+            "status IN ("
+            "'pending', 'accepted', 'capped', 'unknown_user', 'blocked', "
+            "'premium_ineligible', 'no_session', 'rejected'"
+            ")",
+            name="reward_events_status_valid",
+        ),
+    )
+
+
+class RewardSession(Base):
+    """One served ad that has not yet produced a reward callback.
+
+    The partial unique index guarantees at most one pending session per user,
+    provider and block. That single row is the ad cooldown: while it is pending,
+    the bot refuses to fetch another ad. A callback redeems it in the same
+    transaction as the credit grant, so a replayed callback with a new timestamp
+    finds no pending session and grants nothing.
+    """
+
+    __tablename__ = "reward_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    block: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    redeemed_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("reward_events.id", ondelete="SET NULL")
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_reward_sessions_pending",
+            "user_id",
+            "provider",
+            "block",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index("ix_reward_sessions_status_expires_at", "status", "expires_at"),
+        CheckConstraint(
+            "status IN ('pending', 'redeemed', 'expired')",
+            name="reward_sessions_status_valid",
+        ),
     )
 
 

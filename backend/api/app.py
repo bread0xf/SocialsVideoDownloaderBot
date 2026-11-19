@@ -5,6 +5,8 @@ from fastapi import FastAPI
 
 from backend.api.routes.health import router as health_router
 from backend.api.routes.platforms import router as platforms_router
+from backend.api.routes.rewards import alias_router as rewards_alias_router
+from backend.api.routes.rewards import router as rewards_router
 from backend.core.config import Settings, get_settings
 from backend.core.logging import configure_logging
 from backend.database.redis import build_redis
@@ -38,6 +40,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved
     app.include_router(health_router)
     app.include_router(platforms_router)
+    app.include_router(rewards_router)
+    app.include_router(rewards_alias_router, include_in_schema=False)
     return app
 
 
